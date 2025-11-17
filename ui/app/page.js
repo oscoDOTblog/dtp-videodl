@@ -193,17 +193,100 @@ export default function Home() {
     };
   }, []);
 
-  const handleFileChange = (e) => {
+  const cropToSquare = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Use height as the square dimension
+          const size = img.height;
+          
+          // Calculate crop position (center)
+          // For landscape images (width > height), crop horizontally from center
+          // For portrait images (height > width), crop vertically from center
+          const startX = img.width > size ? (img.width - size) / 2 : 0;
+          const startY = img.height > size ? (img.height - size) / 2 : 0;
+          
+          // Crop dimensions: always use size x size (height x height)
+          const cropWidth = Math.min(size, img.width);
+          const cropHeight = Math.min(size, img.height);
+          
+          // Create canvas and crop
+          const canvas = document.createElement("canvas");
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          
+          // Fill with black background first
+          ctx.fillStyle = "#000000";
+          ctx.fillRect(0, 0, size, size);
+          
+          // Draw the cropped image
+          // If image is narrower than height, center it horizontally
+          // If image is shorter than height, center it vertically
+          const destX = img.width < size ? (size - img.width) / 2 : 0;
+          const destY = img.height < size ? (size - img.height) / 2 : 0;
+          
+          ctx.drawImage(
+            img,
+            startX, startY, cropWidth, cropHeight,  // Source rectangle (crop from center)
+            destX, destY, cropWidth, cropHeight      // Destination rectangle (centered if smaller)
+          );
+          
+          // Convert to blob
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                // Create a new File object with the cropped image
+                const croppedFile = new File([blob], file.name, {
+                  type: file.type || "image/jpeg",
+                  lastModified: Date.now(),
+                });
+                resolve(croppedFile);
+              } else {
+                reject(new Error("Failed to crop image"));
+              }
+            },
+            file.type || "image/jpeg",
+            0.95 // Quality
+          );
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      setCover(file);
-      setCoverFileName(file.name);
-      // Create preview URL
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCoverPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        // Crop to square
+        const croppedFile = await cropToSquare(file);
+        setCover(croppedFile);
+        setCoverFileName(file.name);
+        
+        // Create preview URL from cropped image
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setCoverPreview(reader.result);
+        };
+        reader.readAsDataURL(croppedFile);
+      } catch (err) {
+        console.error("Error cropping image:", err);
+        setError("Failed to process image. Please try again.");
+        // Fallback to original file
+        setCover(file);
+        setCoverFileName(file.name);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setCoverPreview(reader.result);
+        };
+        reader.readAsDataURL(file);
+      }
     } else {
       setCover(null);
       setCoverFileName("");
