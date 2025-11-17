@@ -11,6 +11,8 @@ import base64
 import re
 import os
 import logging
+import threading
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(
@@ -26,6 +28,10 @@ OUT_DIR = DATA_DIR / "out"
 
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
 OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# In-memory progress tracking
+progress_store = defaultdict(dict)
+progress_lock = threading.Lock()
 
 app = FastAPI(title="Playlist2Album API")
 
@@ -83,6 +89,149 @@ class FinalizeResp(BaseModel):
     count: int
 
 
+class ProgressResp(BaseModel):
+    job_id: str
+    current: int
+    total: int
+    status: str
+    current_title: Optional[str] = None
+
+
+def run_download_with_progress(job_id: str, playlist_url: str, template: str):
+    """Run yt-dlp and track progress"""
+    cmd = [
+        "yt-dlp",
+        playlist_url,
+        "-o", template,
+        "--yes-playlist",
+        "--extract-audio",
+        "--audio-format", "mp3",
+        "--ffmpeg-location", "/usr/bin/ffmpeg",
+        "--progress",
+    ]
+    
+    # Initialize progress
+    with progress_lock:
+        progress_store[job_id] = {
+            "current": 0,
+            "total": 0,
+            "status": "starting",
+            "current_title": None,
+        }
+    
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        universal_newlines=True
+    )
+    
+    # Parse output for progress
+    for line in process.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        
+        logger.debug(f"yt-dlp output: {line}")
+            
+        # Look for playlist info: "[youtube:tab] Playlist X: Y videos"
+        playlist_info_match = re.search(r'\[.*?\]\s+Playlist.*?(\d+)\s+videos?', line, re.IGNORECASE)
+        if playlist_info_match:
+            total = int(playlist_info_match.group(1))
+            with progress_lock:
+                if progress_store[job_id]["total"] == 0:
+                    progress_store[job_id]["total"] = total
+            logger.info(f"Found playlist with {total} videos")
+        
+        # Look for "[download] Downloading video X of Y"
+        download_match = re.search(r'\[download\]\s+Downloading\s+video\s+(\d+)\s+of\s+(\d+)', line, re.IGNORECASE)
+        if download_match:
+            current = int(download_match.group(1))
+            total = int(download_match.group(2))
+            with progress_lock:
+                progress_store[job_id]["current"] = current
+                progress_store[job_id]["total"] = total
+                progress_store[job_id]["status"] = "downloading"
+            logger.info(f"Progress: {current}/{total}")
+        
+        # Look for "[download] Downloading item X of Y"
+        item_match = re.search(r'\[download\]\s+Downloading\s+item\s+(\d+)\s+of\s+(\d+)', line, re.IGNORECASE)
+        if item_match:
+            current = int(item_match.group(1))
+            total = int(item_match.group(2))
+            with progress_lock:
+                progress_store[job_id]["current"] = current
+                progress_store[job_id]["total"] = total
+                progress_store[job_id]["status"] = "downloading"
+            logger.info(f"Progress: {current}/{total}")
+        
+        # Look for video title in various formats
+        title_patterns = [
+            r'\[download\]\s+Destination:\s+.+?-\s+(.+?)\.mp3',
+            r'\[download\]\s+(.+?)\s+has already been downloaded',
+            r'\[ExtractAudio\]\s+Destination:\s+.+?-\s+(.+?)\.mp3',
+        ]
+        for pattern in title_patterns:
+            title_match = re.search(pattern, line)
+            if title_match:
+                title = title_match.group(1).strip()
+                with progress_lock:
+                    progress_store[job_id]["current_title"] = title
+                logger.debug(f"Downloading: {title}")
+                break
+        
+        # Look for completion indicators
+        if "[download] 100%" in line or "[ExtractAudio]" in line:
+            with progress_lock:
+                if progress_store[job_id]["total"] > 0 and progress_store[job_id]["current"] < progress_store[job_id]["total"]:
+                    progress_store[job_id]["current"] += 1
+                    logger.debug(f"Incremented progress to {progress_store[job_id]['current']}")
+    
+    process.wait()
+    
+    if process.returncode != 0:
+        with progress_lock:
+            progress_store[job_id]["status"] = "error"
+        raise subprocess.CalledProcessError(process.returncode, cmd)
+    
+    with progress_lock:
+        progress_store[job_id]["status"] = "completed"
+
+
+def process_download_async(job_id: str, playlist_url: str, template: str):
+    """Process download in background thread"""
+    try:
+        run_download_with_progress(job_id, playlist_url, template)
+        logger.info(f"yt-dlp completed successfully for job {job_id}")
+        
+        # Build manifest
+        job_dir = JOBS_DIR / job_id
+        logger.info("Building track manifest...")
+        mp3s = sorted(p for p in job_dir.glob("*.mp3"))
+        logger.info(f"Found {len(mp3s)} MP3 files")
+        
+        # Store tracks in progress store for retrieval
+        tracks = []
+        for i, p in enumerate(mp3s, start=1):
+            title = p.stem
+            title = re.sub(r"^\d+\s*-\s*", "", title)  # strip "01 - "
+            tracks.append({"id": i, "path": str(p), "title": title})
+            logger.debug(f"Track {i}: {title}")
+        
+        with progress_lock:
+            progress_store[job_id]["tracks"] = tracks
+            progress_store[job_id]["status"] = "completed"
+        
+        logger.info(f"Download job {job_id} completed successfully with {len(tracks)} tracks")
+    except Exception as e:
+        logger.error(f"Download failed for job {job_id}: {e}")
+        with progress_lock:
+            progress_store[job_id]["status"] = "error"
+            progress_store[job_id]["error"] = str(e)
+
+
 @app.post("/download", response_model=DownloadResp)
 def download(req: DownloadReq):
     job_id = str(uuid.uuid4())
@@ -98,42 +247,38 @@ def download(req: DownloadReq):
     template = str(job_dir / "%(playlist_index)02d - %(title)s.%(ext)s")
     logger.info(f"Using template: {template}")
 
-    # yt-dlp call
-    cmd = [
-        "yt-dlp",
-        req.playlist_url,
-        "-o", template,
-        "--yes-playlist",
-        "--extract-audio",
-        "--audio-format", "mp3",
-        "--ffmpeg-location", "/usr/bin/ffmpeg",
-        "--no-progress",
-    ]
+    # Start download in background thread
+    thread = threading.Thread(
+        target=process_download_async,
+        args=(job_id, req.playlist_url, template)
+    )
+    thread.daemon = True
+    thread.start()
 
-    logger.info(f"Running yt-dlp command: {' '.join(cmd)}")
-    try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info(f"yt-dlp completed successfully")
-        if result.stdout:
-            logger.debug(f"yt-dlp stdout: {result.stdout[:500]}")  # Log first 500 chars
-    except subprocess.CalledProcessError as e:
-        logger.error(f"yt-dlp failed with exit code {e.returncode}")
-        logger.error(f"yt-dlp stderr: {e.stderr}")
-        logger.error(f"yt-dlp stdout: {e.stdout}")
-        raise HTTPException(status_code=500, detail=f"yt-dlp failed: {e.stderr}")
+    # Return immediately with job_id
+    return DownloadResp(job_id=job_id, out_dir=str(job_dir), tracks=[])
 
-    # Build manifest
-    logger.info("Building track manifest...")
-    mp3s = sorted(p for p in job_dir.glob("*.mp3"))
-    logger.info(f"Found {len(mp3s)} MP3 files")
-    tracks = []
-    for i, p in enumerate(mp3s, start=1):
-        title = p.stem
-        title = re.sub(r"^\d+\s*-\s*", "", title)  # strip "01 - "
-        tracks.append(TrackIn(id=i, path=str(p), title=title))
-        logger.debug(f"Track {i}: {title}")
 
-    logger.info(f"Download job {job_id} completed successfully with {len(tracks)} tracks")
+@app.get("/download/result/{job_id}", response_model=DownloadResp)
+def get_download_result(job_id: str):
+    """Get the final download result once completed"""
+    with progress_lock:
+        progress = progress_store.get(job_id)
+    
+    if not progress:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if progress.get("status") == "error":
+        error_msg = progress.get("error", "Unknown error")
+        raise HTTPException(status_code=500, detail=f"Download failed: {error_msg}")
+    
+    if progress.get("status") != "completed":
+        raise HTTPException(status_code=202, detail="Job still in progress")
+    
+    tracks_data = progress.get("tracks", [])
+    tracks = [TrackIn(**t) for t in tracks_data]
+    job_dir = JOBS_DIR / job_id
+    
     return DownloadResp(job_id=job_id, out_dir=str(job_dir), tracks=tracks)
 
 
@@ -234,6 +379,25 @@ def finalize(req: FinalizeReq):
         ok=True,
         zip_url=f"/download/{zip_path.name}",
         count=len(req.ordered_tracks)
+    )
+
+
+@app.get("/progress/{job_id}", response_model=ProgressResp)
+def get_progress(job_id: str):
+    with progress_lock:
+        progress = progress_store.get(job_id, {
+            "current": 0,
+            "total": 0,
+            "status": "unknown",
+            "current_title": None,
+        })
+    
+    return ProgressResp(
+        job_id=job_id,
+        current=progress.get("current", 0),
+        total=progress.get("total", 0),
+        status=progress.get("status", "unknown"),
+        current_title=progress.get("current_title"),
     )
 
 
