@@ -1,0 +1,27 @@
+services:
+  api:
+    build: ./api
+    container_name: p2a_api
+    environment:
+      - DATA_DIR=/data
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8000
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  web:
+    build: ./ui
+    container_name: p2a_web
+    environment:
+      - NEXT_PUBLIC_APP_NAME=Playlist2Album
+      - API_BASE_INTERNAL=http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
