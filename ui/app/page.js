@@ -43,11 +43,28 @@ export default function Home() {
         });
         
         // If completed or error, stop polling
-        if (progressData.status === "completed" || progressData.status === "error") {
+        if (progressData.status === "completed") {
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
           }
+          // Show notification when download completes
+          showNotification("Playlist2Album Complete!", {
+            body: `Downloaded ${progressData.current || progressData.total || 0} of ${progressData.total || 0} videos. Processing tracks...`,
+            tag: "download-progress",
+          });
+          return true; // Signal completion
+        }
+        
+        if (progressData.status === "error") {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
+          showNotification("Download Failed", {
+            body: "There was an error downloading the playlist.",
+            tag: "download-error",
+          });
           return true; // Signal completion
         }
       }
@@ -113,6 +130,12 @@ export default function Home() {
                   })
                 );
 
+                // Show notification
+                showNotification("Playlist2Album Complete!", {
+                  body: `Successfully downloaded ${finalData.tracks?.length || 0} tracks. Ready to proceed to ordering.`,
+                  tag: "download-complete",
+                });
+
                 router.push("/order");
               } else if (finalResponse.status === 202) {
                 // Still processing, continue polling
@@ -138,6 +161,26 @@ export default function Home() {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
+    }
+  };
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch((err) => {
+        console.log("Notification permission request failed:", err);
+      });
+    }
+  }, []);
+
+  // Show browser notification
+  const showNotification = (title, options = {}) => {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        icon: "/favicon.ico",
+        badge: "/favicon.ico",
+        ...options,
+      });
     }
   };
 
