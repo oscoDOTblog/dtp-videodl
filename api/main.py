@@ -110,11 +110,11 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
         "--progress",
     ]
     
-    # Initialize progress
+    # Initialize progress (assume single video until we detect playlist)
     with progress_lock:
         progress_store[job_id] = {
             "current": 0,
-            "total": 0,
+            "total": 1,  # Default to 1 for single videos
             "status": "starting",
             "current_title": None,
         }
@@ -185,7 +185,12 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
         # Look for completion indicators
         if "[download] 100%" in line or "[ExtractAudio]" in line:
             with progress_lock:
-                if progress_store[job_id]["total"] > 0 and progress_store[job_id]["current"] < progress_store[job_id]["total"]:
+                # For single videos, mark as complete when we see 100%
+                if progress_store[job_id]["total"] == 1 and progress_store[job_id]["current"] == 0:
+                    progress_store[job_id]["current"] = 1
+                    progress_store[job_id]["status"] = "downloading"
+                    logger.debug("Single video download progress: 1/1")
+                elif progress_store[job_id]["total"] > 1 and progress_store[job_id]["current"] < progress_store[job_id]["total"]:
                     progress_store[job_id]["current"] += 1
                     logger.debug(f"Incremented progress to {progress_store[job_id]['current']}")
     
@@ -196,7 +201,10 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
             progress_store[job_id]["status"] = "error"
         raise subprocess.CalledProcessError(process.returncode, cmd)
     
+    # Finalize progress - ensure single videos are marked complete
     with progress_lock:
+        if progress_store[job_id]["total"] == 1 and progress_store[job_id]["current"] == 0:
+            progress_store[job_id]["current"] = 1
         progress_store[job_id]["status"] = "completed"
 
 
@@ -216,7 +224,12 @@ def process_download_async(job_id: str, playlist_url: str, template: str):
         tracks = []
         for i, p in enumerate(mp3s, start=1):
             title = p.stem
-            title = re.sub(r"^\d+\s*-\s*", "", title)  # strip "01 - "
+            # Strip leading number prefix and dash if present
+            # For playlists: "01 - Title" -> "Title"
+            # For single videos: "00 - Title" -> "Title" or " - Title" -> "Title"
+            # Handle both numbered prefix and plain dash prefix
+            title = re.sub(r"^\d+\s*-\s*", "", title)  # Remove "01 - " or "00 - " prefix
+            title = re.sub(r"^\s*-\s*", "", title)  # Remove " - " prefix if present (single videos)
             tracks.append({"id": i, "path": str(p), "title": title})
             logger.debug(f"Track {i}: {title}")
         
@@ -244,6 +257,8 @@ def download(req: DownloadReq):
     logger.info(f"Output directory: {job_dir}")
 
     # Use playlist index for stable initial order; convert to mp3
+    # Template handles both playlists and single videos
+    # For playlists: "01 - Title.mp3", for single videos: "00 - Title.mp3" (we'll clean this up)
     template = str(job_dir / "%(playlist_index)02d - %(title)s.%(ext)s")
     logger.info(f"Using template: {template}")
 
