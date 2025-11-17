@@ -1,0 +1,10 @@
+frontend will be nextjs
+backend will be python
+do not use typescript
+do not use tailwind css
+when creating css, use nextjs css modules and make sure it's mobile-responsive
+make any new css with netflix-style theming and hot pink shades instead of netflix red
+develop new features to be scalable
+do not implement features that will leak any sensitive app information or credentials
+if creating ai prompts, save all the prompts on the server-side backend
+add new database fields with camelCase
