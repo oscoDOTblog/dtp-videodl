@@ -147,11 +147,27 @@ export default function Home() {
             <input
               id="year"
               className={styles.input}
-              type="text"
+              type="number"
               placeholder="2024"
               value={year}
-              onChange={(e) => setYear(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Only allow digits
+                if (value === "" || /^\d+$/.test(value)) {
+                  setYear(value);
+                }
+              }}
+              onKeyDown={(e) => {
+                // Prevent non-numeric characters
+                if (e.key !== "Backspace" && e.key !== "Delete" && e.key !== "Tab" && e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") {
+                  if (!/^\d$/.test(e.key)) {
+                    e.preventDefault();
+                  }
+                }
+              }}
               disabled={loading}
+              min="1900"
+              max="2100"
             />
           </div>
 
