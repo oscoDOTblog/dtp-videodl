@@ -321,7 +321,7 @@ export default function Home() {
 
           <div className={styles.formGroup}>
             <label className={styles.label} htmlFor="albumTitle">
-              Album Title
+              Album
             </label>
             <input
               id="albumTitle"
@@ -336,7 +336,7 @@ export default function Home() {
 
           <div className={styles.formGroup}>
             <label className={styles.label} htmlFor="albumArtist">
-              Album Artist
+              Artist
             </label>
             <input
               id="albumArtist"
