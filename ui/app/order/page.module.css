@@ -1,0 +1,198 @@
+.container {
+  min-height: 100vh;
+  padding: 2rem;
+  background: var(--bg-primary);
+}
+
+.main {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 2.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+.tracksList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.trackItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.trackItem:hover {
+  border-color: var(--accent-pink);
+  background: var(--bg-primary);
+}
+
+.trackNumber {
+  min-width: 2.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--accent-pink);
+  font-size: 1.1rem;
+}
+
+.trackInput {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.trackInput:focus {
+  outline: none;
+  border-color: var(--accent-pink);
+}
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.controlButton {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  font-size: 0.875rem;
+  min-width: 2.5rem;
+}
+
+.controlButton:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-pink);
+}
+
+.controlButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.finalizeSection {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.finalizeButton {
+  width: 100%;
+  padding: 1rem 2rem;
+  background: var(--accent-pink);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.finalizeButton:hover:not(:disabled) {
+  background: var(--accent-pink-hover);
+  transform: translateY(-1px);
+}
+
+.finalizeButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.finalizeButton:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.loading {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-top: 1rem;
+}
+
+.error {
+  padding: 1rem;
+  background: rgba(255, 20, 147, 0.1);
+  border: 1px solid var(--accent-pink);
+  border-radius: 4px;
+  color: var(--accent-pink);
+  margin-top: 1rem;
+}
+
+.noManifest {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 2rem;
+}
+
+.noManifestLink {
+  color: var(--accent-pink);
+  text-decoration: none;
+  margin-top: 1rem;
+  display: inline-block;
+}
+
+.noManifestLink:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .main {
+    padding: 1.5rem;
+  }
+
+  .title {
+    font-size: 1.5rem;
+  }
+
+  .trackItem {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trackNumber {
+    text-align: left;
+  }
+
+  .controls {
+    justify-content: center;
+  }
+}
+
