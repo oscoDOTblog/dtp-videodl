@@ -89,6 +89,9 @@ export default function OrderPage() {
   return (
     <div className={styles.container}>
       <main className={styles.main}>
+        <Link href="/" className={styles.homeButton}>
+          Return to Home
+        </Link>
         <h2 className={styles.title}>Set Track Order & Titles</h2>
         <p className={styles.subtitle}>
           Reorder tracks and edit titles before finalizing your album
