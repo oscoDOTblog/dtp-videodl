@@ -429,73 +429,84 @@ export default function Home() {
         </p>
 
         <form onSubmit={onSubmit} className={styles.form}>
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="playlistUrl">
-              YouTube Playlist URL
-            </label>
-            <input
-              id="playlistUrl"
-              className={styles.input}
-              type="url"
-              placeholder="https://www.youtube.com/playlist?list=..."
-              value={playlistUrl}
-              onChange={(e) => {
-                setPlaylistUrl(e.target.value);
-                setDetailsVisible(false);
-              }}
-              required
-              disabled={loading || metadataLoading}
-            />
-          </div>
+          {!detailsVisible && (
+            <>
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="playlistUrl">
+                  YouTube Playlist URL
+                </label>
+                <input
+                  id="playlistUrl"
+                  className={styles.input}
+                  type="url"
+                  placeholder="https://www.youtube.com/playlist?list=..."
+                  value={playlistUrl}
+                  onChange={(e) => {
+                    setPlaylistUrl(e.target.value);
+                    setDetailsVisible(false);
+                  }}
+                  required
+                  disabled={loading || metadataLoading}
+                />
+              </div>
 
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="useCookiesToggle">
-              Download Mode
-            </label>
-            <label className={styles.toggleRow} htmlFor="useCookiesToggle">
-              <input
-                id="useCookiesToggle"
-                type="checkbox"
-                className={styles.toggleInput}
-                checked={useCookies}
-                onChange={(e) => setUseCookies(e.target.checked)}
-                disabled={loading || metadataLoading || cookiesLoading}
-              />
-              <span className={styles.toggleSlider} aria-hidden="true" />
-              <span>Use uploaded cookies for metadata/download</span>
-            </label>
-          </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="useCookiesToggle">
+                  Download Mode
+                </label>
+                <label className={styles.toggleRow} htmlFor="useCookiesToggle">
+                  <input
+                    id="useCookiesToggle"
+                    type="checkbox"
+                    className={styles.toggleInput}
+                    checked={useCookies}
+                    onChange={(e) => setUseCookies(e.target.checked)}
+                    disabled={loading || metadataLoading || cookiesLoading}
+                  />
+                  <span className={styles.toggleSlider} aria-hidden="true" />
+                  <span>Use uploaded cookies for metadata/download</span>
+                </label>
+              </div>
 
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="cookiesUpload">
-              YouTube Cookies (cookies.txt)
-            </label>
-            <label className={styles.fileInputLabel} htmlFor="cookiesUpload">
-              {cookiesLoading ? "Uploading..." : "Upload Cookies"}
-              <input
-                id="cookiesUpload"
-                type="file"
-                accept=".txt,text/plain"
-                onChange={handleCookiesUpload}
-                disabled={loading || metadataLoading || cookiesLoading}
-              />
-            </label>
-            <div className={styles.fileName}>
-              {cookiesStatus.hasCookies
-                ? `Last uploaded: ${formatUploadedAt(cookiesStatus.uploadedAt)}`
-                : "No cookies uploaded yet"}
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="cookiesUpload">
+                  YouTube Cookies (cookies.txt)
+                </label>
+                <label className={styles.fileInputLabel} htmlFor="cookiesUpload">
+                  {cookiesLoading ? "Uploading..." : "Upload Cookies"}
+                  <input
+                    id="cookiesUpload"
+                    type="file"
+                    accept=".txt,text/plain"
+                    onChange={handleCookiesUpload}
+                    disabled={loading || metadataLoading || cookiesLoading}
+                  />
+                </label>
+                <div className={styles.fileName}>
+                  {cookiesStatus.hasCookies
+                    ? `Last uploaded: ${formatUploadedAt(cookiesStatus.uploadedAt)}`
+                    : "No cookies uploaded yet"}
+                </div>
+                {cookiesMessage && <div className={styles.loading}>{cookiesMessage}</div>}
+              </div>
+
+              <button
+                type="button"
+                className={styles.button}
+                onClick={loadMetadata}
+                disabled={!playlistUrl || loading || metadataLoading}
+              >
+                Load URL Details
+              </button>
+            </>
+          )}
+
+          {metadataLoading && (
+            <div className={styles.loadingPanel}>
+              <div className={styles.spinner} />
+              <div className={styles.loading}>Loading metadata...</div>
             </div>
-            {cookiesMessage && <div className={styles.loading}>{cookiesMessage}</div>}
-          </div>
-
-          <button
-            type="button"
-            className={styles.button}
-            onClick={loadMetadata}
-            disabled={!playlistUrl || loading || metadataLoading}
-          >
-            {metadataLoading ? "Loading metadata..." : "Load URL Details"}
-          </button>
+          )}
 
           {detailsVisible && (
             <>
@@ -611,6 +622,7 @@ export default function Home() {
 
           {loading && (
             <div className={styles.loading}>
+              <div className={styles.spinner} />
               {progress.total > 0 ? (
                 <>
                   <div className={styles.progressText}>
