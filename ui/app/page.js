@@ -452,14 +452,16 @@ export default function Home() {
             <label className={styles.label} htmlFor="useCookiesToggle">
               Download Mode
             </label>
-            <label className={styles.checkboxRow}>
+            <label className={styles.toggleRow} htmlFor="useCookiesToggle">
               <input
                 id="useCookiesToggle"
                 type="checkbox"
+                className={styles.toggleInput}
                 checked={useCookies}
                 onChange={(e) => setUseCookies(e.target.checked)}
                 disabled={loading || metadataLoading || cookiesLoading}
               />
+              <span className={styles.toggleSlider} aria-hidden="true" />
               <span>Use uploaded cookies for metadata/download</span>
             </label>
           </div>

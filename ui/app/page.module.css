@@ -42,16 +42,62 @@
   gap: 0.5rem;
 }
 
-.checkboxRow {
+.toggleRow {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   color: var(--text-primary);
   font-size: 0.95rem;
+  cursor: pointer;
 }
 
-.checkboxRow input[type="checkbox"] {
-  accent-color: var(--accent-pink);
+.toggleInput {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.toggleSlider {
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  position: relative;
+  flex-shrink: 0;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.toggleSlider::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  top: 3px;
+  left: 3px;
+  background: var(--text-secondary);
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.toggleInput:checked + .toggleSlider {
+  background: rgba(255, 20, 147, 0.25);
+  border-color: var(--accent-pink);
+}
+
+.toggleInput:checked + .toggleSlider::after {
+  transform: translateX(20px);
+  background: var(--accent-pink);
+}
+
+.toggleInput:focus-visible + .toggleSlider {
+  box-shadow: 0 0 0 2px rgba(255, 20, 147, 0.35);
+}
+
+.toggleInput:disabled + .toggleSlider {
+  opacity: 0.6;
 }
 
 .label {
