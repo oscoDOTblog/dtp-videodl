@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "./page.module.css";
 
+const apiBaseExternal = process.env.NEXT_PUBLIC_API_BASE_EXTERNAL || "http://localhost:8545";
+
 export default function OrderPage() {
   const [job, setJob] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -63,7 +65,7 @@ export default function OrderPage() {
 
       const data = await response.json();
       // Download the zip file
-      window.location.href = `http://localhost:8000${data.zip_url}`;
+      window.location.href = `${apiBaseExternal}${data.zip_url}`;
     } catch (err) {
       setError(err.message || "Failed to finalize album");
       setLoading(false);

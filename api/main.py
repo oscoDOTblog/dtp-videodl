@@ -8,10 +8,13 @@ import subprocess
 import uuid
 import zipfile
 import base64
+import json
 import re
 import os
 import logging
 import threading
+from urllib import request as urllib_request
+from urllib.error import URLError, HTTPError
 from collections import defaultdict
 
 # Configure logging
@@ -36,9 +39,11 @@ progress_lock = threading.Lock()
 app = FastAPI(title="Playlist2Album API")
 
 # Enable CORS for local development
+cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:8546")
+cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -68,6 +73,17 @@ class TrackIn(BaseModel):
 class DownloadReq(BaseModel):
     playlist_url: str
     album: AlbumMeta
+
+
+class MetadataReq(BaseModel):
+    playlist_url: str
+
+
+class MetadataResp(BaseModel):
+    title: str = Field(default="")
+    artist: str = Field(default="")
+    year: str = Field(default="")
+    cover_base64: Optional[str] = None
 
 
 class DownloadResp(BaseModel):
@@ -243,6 +259,65 @@ def process_download_async(job_id: str, playlist_url: str, template: str):
         with progress_lock:
             progress_store[job_id]["status"] = "error"
             progress_store[job_id]["error"] = str(e)
+
+
+def fetch_cover_base64(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+
+    headers = {"User-Agent": "Mozilla/5.0 Playlist2Album/1.0"}
+    req = urllib_request.Request(url, headers=headers)
+    try:
+        with urllib_request.urlopen(req, timeout=10) as response:
+            content_type = response.headers.get("Content-Type", "")
+            if not content_type.startswith("image/"):
+                return None
+            return base64.b64encode(response.read()).decode("utf-8")
+    except (URLError, HTTPError, TimeoutError, ValueError) as e:
+        logger.warning(f"Could not fetch thumbnail for metadata prefill: {e}")
+        return None
+
+
+@app.post("/metadata", response_model=MetadataResp)
+def metadata(req: MetadataReq):
+    cmd = [
+        "yt-dlp",
+        "--dump-single-json",
+        "--skip-download",
+        "--no-warnings",
+        req.playlist_url,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or e.stdout or "Failed to fetch metadata").strip()
+        raise HTTPException(status_code=400, detail=detail)
+
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="Invalid metadata response from yt-dlp")
+
+    title = (payload.get("title") or payload.get("playlist_title") or "").strip()
+    artist = (payload.get("uploader") or payload.get("channel") or payload.get("creator") or "").strip()
+
+    year_value = payload.get("release_year")
+    if year_value:
+        year = str(year_value)
+    else:
+        upload_date = str(payload.get("upload_date") or "")
+        year = upload_date[:4] if len(upload_date) >= 4 and upload_date[:4].isdigit() else ""
+
+    thumbnail_url = payload.get("thumbnail")
+    if not thumbnail_url:
+        thumbnails = payload.get("thumbnails") or []
+        if thumbnails and isinstance(thumbnails, list):
+            thumbnail_url = thumbnails[-1].get("url")
+
+    cover_base64 = fetch_cover_base64(thumbnail_url)
+
+    return MetadataResp(title=title, artist=artist, year=year, cover_base64=cover_base64)
 
 
 @app.post("/download", response_model=DownloadResp)

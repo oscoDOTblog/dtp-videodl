@@ -9,6 +9,9 @@ export default function Home() {
   const [albumTitle, setAlbumTitle] = useState("");
   const [albumArtist, setAlbumArtist] = useState("");
   const [year, setYear] = useState("");
+  const [detailsVisible, setDetailsVisible] = useState(false);
+  const [metadataLoading, setMetadataLoading] = useState(false);
+  const [autoCoverBase64, setAutoCoverBase64] = useState("");
   const [cover, setCover] = useState(null);
   const [coverFileName, setCoverFileName] = useState("");
   const [coverPreview, setCoverPreview] = useState("");
@@ -74,8 +77,102 @@ export default function Home() {
     return false;
   };
 
+  const cropDataUrlToSquare = (dataUrl, outputType = "image/jpeg") => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const size = Math.min(img.width, img.height);
+        const startX = (img.width - size) / 2;
+        const startY = (img.height - size) / 2;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Failed to create canvas context"));
+          return;
+        }
+
+        ctx.drawImage(
+          img,
+          startX,
+          startY,
+          size,
+          size,
+          0,
+          0,
+          size,
+          size
+        );
+
+        resolve(canvas.toDataURL(outputType, 0.95));
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  };
+
+  const loadMetadata = async () => {
+    if (!playlistUrl) return;
+
+    setMetadataLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/metadata", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ playlist_url: playlistUrl }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to fetch metadata" }));
+        throw new Error(errorData.detail || "Failed to fetch metadata");
+      }
+
+      const data = await response.json();
+      setAlbumTitle(data.title || "");
+      setAlbumArtist(data.artist || "");
+      setYear(data.year || "");
+
+      if (data.cover_base64) {
+        const sourceDataUrl = `data:image/jpeg;base64,${data.cover_base64}`;
+        const croppedDataUrl = await cropDataUrlToSquare(sourceDataUrl, "image/jpeg");
+        setAutoCoverBase64(croppedDataUrl.split(",").pop() || "");
+        setCover(null);
+        setCoverFileName("Auto-filled from playlist");
+        setCoverPreview(croppedDataUrl);
+      } else {
+        setAutoCoverBase64("");
+        setCover(null);
+        setCoverFileName("");
+        setCoverPreview("");
+      }
+    } catch (err) {
+      setError(err.message || "Failed to fetch metadata");
+    } finally {
+      setDetailsVisible(true);
+      setMetadataLoading(false);
+    }
+  };
+
+  const startOver = () => {
+    setPlaylistUrl("");
+    setAlbumTitle("");
+    setAlbumArtist("");
+    setYear("");
+    setAutoCoverBase64("");
+    setCover(null);
+    setCoverFileName("");
+    setCoverPreview("");
+    setDetailsVisible(false);
+    setError("");
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
+    if (!detailsVisible || metadataLoading) return;
     setLoading(true);
     setError("");
     setProgress({ current: 0, total: 0, status: "starting", currentTitle: "" });
@@ -115,7 +212,7 @@ export default function Home() {
               
               if (finalResponse.ok) {
                 const finalData = await finalResponse.json();
-                const coverBase64 = cover ? await toBase64(cover) : null;
+                const coverBase64 = cover ? await toBase64(cover) : autoCoverBase64 || null;
 
                 sessionStorage.setItem(
                   "p2a-manifest",
@@ -196,64 +293,21 @@ export default function Home() {
   const cropToSquare = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          // Use height as the square dimension
-          const size = img.height;
-          
-          // Calculate crop position (center)
-          // For landscape images (width > height), crop horizontally from center
-          // For portrait images (height > width), crop vertically from center
-          const startX = img.width > size ? (img.width - size) / 2 : 0;
-          const startY = img.height > size ? (img.height - size) / 2 : 0;
-          
-          // Crop dimensions: always use size x size (height x height)
-          const cropWidth = Math.min(size, img.width);
-          const cropHeight = Math.min(size, img.height);
-          
-          // Create canvas and crop
-          const canvas = document.createElement("canvas");
-          canvas.width = size;
-          canvas.height = size;
-          const ctx = canvas.getContext("2d");
-          
-          // Fill with black background first
-          ctx.fillStyle = "#000000";
-          ctx.fillRect(0, 0, size, size);
-          
-          // Draw the cropped image
-          // If image is narrower than height, center it horizontally
-          // If image is shorter than height, center it vertically
-          const destX = img.width < size ? (size - img.width) / 2 : 0;
-          const destY = img.height < size ? (size - img.height) / 2 : 0;
-          
-          ctx.drawImage(
-            img,
-            startX, startY, cropWidth, cropHeight,  // Source rectangle (crop from center)
-            destX, destY, cropWidth, cropHeight      // Destination rectangle (centered if smaller)
-          );
-          
-          // Convert to blob
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
-                // Create a new File object with the cropped image
-                const croppedFile = new File([blob], file.name, {
-                  type: file.type || "image/jpeg",
-                  lastModified: Date.now(),
-                });
-                resolve(croppedFile);
-              } else {
-                reject(new Error("Failed to crop image"));
-              }
-            },
-            file.type || "image/jpeg",
-            0.95 // Quality
-          );
-        };
-        img.onerror = reject;
-        img.src = e.target.result;
+      reader.onload = async (e) => {
+        try {
+          const sourceDataUrl = e.target?.result;
+          const outputType = file.type || "image/jpeg";
+          const croppedDataUrl = await cropDataUrlToSquare(sourceDataUrl, outputType);
+          const response = await fetch(croppedDataUrl);
+          const blob = await response.blob();
+          const croppedFile = new File([blob], file.name, {
+            type: outputType,
+            lastModified: Date.now(),
+          });
+          resolve(croppedFile);
+        } catch (err) {
+          reject(err);
+        }
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
@@ -264,6 +318,7 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (file) {
       try {
+        setAutoCoverBase64("");
         // Crop to square
         const croppedFile = await cropToSquare(file);
         setCover(croppedFile);
@@ -291,6 +346,7 @@ export default function Home() {
       setCover(null);
       setCoverFileName("");
       setCoverPreview("");
+      setAutoCoverBase64("");
     }
   };
 
@@ -313,107 +369,132 @@ export default function Home() {
               type="url"
               placeholder="https://www.youtube.com/playlist?list=..."
               value={playlistUrl}
-              onChange={(e) => setPlaylistUrl(e.target.value)}
-              required
-              disabled={loading}
-            />
-          </div>
-
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="albumTitle">
-              Album
-            </label>
-            <input
-              id="albumTitle"
-              className={styles.input}
-              type="text"
-              placeholder="My Awesome Album"
-              value={albumTitle}
-              onChange={(e) => setAlbumTitle(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="albumArtist">
-              Artist
-            </label>
-            <input
-              id="albumArtist"
-              className={styles.input}
-              type="text"
-              placeholder="Artist Name"
-              value={albumArtist}
-              onChange={(e) => setAlbumArtist(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="year">
-              Year
-            </label>
-            <input
-              id="year"
-              className={styles.input}
-              type="number"
-              placeholder="2024"
-              value={year}
               onChange={(e) => {
-                const value = e.target.value;
-                // Only allow digits
-                if (value === "" || /^\d+$/.test(value)) {
-                  setYear(value);
-                }
+                setPlaylistUrl(e.target.value);
+                setDetailsVisible(false);
               }}
-              onKeyDown={(e) => {
-                // Prevent non-numeric characters
-                if (e.key !== "Backspace" && e.key !== "Delete" && e.key !== "Tab" && e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") {
-                  if (!/^\d$/.test(e.key)) {
-                    e.preventDefault();
-                  }
-                }
-              }}
-              disabled={loading}
-              min="1900"
-              max="2100"
+              required
+              disabled={loading || metadataLoading}
             />
           </div>
 
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="cover">
-              Album Cover Art
-            </label>
-            <label className={styles.fileInputLabel} htmlFor="cover">
-              {coverFileName || "Choose Image File"}
-              <input
-                id="cover"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                disabled={loading}
-              />
-            </label>
-            {coverFileName && (
-              <div className={styles.fileName}>{coverFileName}</div>
-            )}
-            {coverPreview && (
-              <div className={styles.imagePreview}>
-                <img
-                  src={coverPreview}
-                  alt="Album cover preview"
-                  className={styles.previewImage}
+          <button
+            type="button"
+            className={styles.button}
+            onClick={loadMetadata}
+            disabled={!playlistUrl || loading || metadataLoading}
+          >
+            {metadataLoading ? "Loading metadata..." : "Load URL Details"}
+          </button>
+
+          {detailsVisible && (
+            <>
+              <button
+                type="button"
+                className={styles.button}
+                onClick={startOver}
+                disabled={loading || metadataLoading}
+              >
+                Start Over
+              </button>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="albumTitle">
+                  Album
+                </label>
+                <input
+                  id="albumTitle"
+                  className={styles.input}
+                  type="text"
+                  placeholder="My Awesome Album"
+                  value={albumTitle}
+                  onChange={(e) => setAlbumTitle(e.target.value)}
+                  disabled={loading || metadataLoading}
                 />
               </div>
-            )}
-          </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="albumArtist">
+                  Artist
+                </label>
+                <input
+                  id="albumArtist"
+                  className={styles.input}
+                  type="text"
+                  placeholder="Artist Name"
+                  value={albumArtist}
+                  onChange={(e) => setAlbumArtist(e.target.value)}
+                  disabled={loading || metadataLoading}
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="year">
+                  Year
+                </label>
+                <input
+                  id="year"
+                  className={styles.input}
+                  type="number"
+                  placeholder="2026"
+                  value={year}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Only allow digits
+                    if (value === "" || /^\d+$/.test(value)) {
+                      setYear(value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    // Prevent non-numeric characters
+                    if (e.key !== "Backspace" && e.key !== "Delete" && e.key !== "Tab" && e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") {
+                      if (!/^\d$/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }
+                  }}
+                  disabled={loading || metadataLoading}
+                  min="1900"
+                  max="2100"
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="cover">
+                  Album Cover Art
+                </label>
+                <label className={styles.fileInputLabel} htmlFor="cover">
+                  Upload
+                  <input
+                    id="cover"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    disabled={loading || metadataLoading}
+                  />
+                </label>
+                {coverFileName && (
+                  <div className={styles.fileName}>{coverFileName}</div>
+                )}
+                {coverPreview && (
+                  <div className={styles.imagePreview}>
+                    <img
+                      src={coverPreview}
+                      alt="Album cover preview"
+                      className={styles.previewImage}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {error && <div className={styles.error}>{error}</div>}
 
           <button
             type="submit"
             className={styles.button}
-            disabled={loading || !playlistUrl}
+            disabled={loading || metadataLoading || !playlistUrl || !detailsVisible}
           >
             {loading ? "Downloading..." : "Fetch & Convert"}
           </button>

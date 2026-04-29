@@ -23,8 +23,8 @@ docker compose up --build
 ```
 
 3. Open your browser to:
-   - **UI**: http://localhost:3000
-   - **API**: http://localhost:8000
+   - **UI**: http://localhost:8546
+   - **API**: http://localhost:8545
 
 ## Project Structure
 
