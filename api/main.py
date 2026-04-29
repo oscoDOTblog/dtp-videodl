@@ -136,6 +136,7 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
     cmd = build_yt_dlp_cmd([
         "yt-dlp",
         playlist_url,
+        "-f", "bestaudio/best",
         "-o", template,
         "--yes-playlist",
         "--extract-audio",
