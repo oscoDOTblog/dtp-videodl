@@ -258,11 +258,10 @@ def process_download_async(job_id: str, playlist_url: str, template: str):
         tracks = []
         for i, p in enumerate(mp3s, start=1):
             title = p.stem
-            # Strip leading number prefix and dash if present
+            # Strip generated prefixes from yt-dlp templates.
             # For playlists: "01 - Title" -> "Title"
-            # For single videos: "00 - Title" -> "Title" or " - Title" -> "Title"
-            # Handle both numbered prefix and plain dash prefix
-            title = re.sub(r"^\d+\s*-\s*", "", title)  # Remove "01 - " or "00 - " prefix
+            # For single videos: "NA - Title" / "00 - Title" / " - Title" -> "Title"
+            title = re.sub(r"^(?:\d+|NA)\s*-\s*", "", title, flags=re.IGNORECASE)
             title = re.sub(r"^\s*-\s*", "", title)  # Remove " - " prefix if present (single videos)
             tracks.append({"id": i, "path": str(p), "title": title})
             logger.debug(f"Track {i}: {title}")

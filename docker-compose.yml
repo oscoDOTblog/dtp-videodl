@@ -11,7 +11,7 @@ services:
       - CORS_ORIGINS=http://localhost:8546,http://localhost:3000
     volumes:
       - ./data:/data
-      - /mnt/yuna/navidrome:/music
+      - /mnt/yuna/navidrome/music:/music
       - /mnt/yuna/navidrome/data:/cookies
     ports:
       - "8545:8000"
