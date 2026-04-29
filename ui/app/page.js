@@ -6,6 +6,7 @@ import styles from "./page.module.css";
 
 export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState("");
+  const [useCookies, setUseCookies] = useState(true);
   const [albumTitle, setAlbumTitle] = useState("");
   const [albumArtist, setAlbumArtist] = useState("");
   const [year, setYear] = useState("");
@@ -149,7 +150,7 @@ export default function Home() {
       const response = await fetch("/api/metadata", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ playlist_url: playlistUrl }),
+        body: JSON.stringify({ playlist_url: playlistUrl, useCookies: useCookies }),
       });
 
       if (!response.ok) {
@@ -188,6 +189,7 @@ export default function Home() {
     setAlbumTitle("");
     setAlbumArtist("");
     setYear("");
+    setUseCookies(true);
     setAutoCoverBase64("");
     setCover(null);
     setCoverFileName("");
@@ -210,6 +212,7 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           playlist_url: playlistUrl,
+          useCookies: useCookies,
           album: {
             title: albumTitle,
             artist: albumArtist,
@@ -443,6 +446,22 @@ export default function Home() {
               required
               disabled={loading || metadataLoading}
             />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label} htmlFor="useCookiesToggle">
+              Download Mode
+            </label>
+            <label className={styles.checkboxRow}>
+              <input
+                id="useCookiesToggle"
+                type="checkbox"
+                checked={useCookies}
+                onChange={(e) => setUseCookies(e.target.checked)}
+                disabled={loading || metadataLoading || cookiesLoading}
+              />
+              <span>Use uploaded cookies for metadata/download</span>
+            </label>
           </div>
 
           <div className={styles.formGroup}>

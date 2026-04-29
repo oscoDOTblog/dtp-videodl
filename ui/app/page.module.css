@@ -42,6 +42,18 @@
   gap: 0.5rem;
 }
 
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.checkboxRow input[type="checkbox"] {
+  accent-color: var(--accent-pink);
+}
+
 .label {
   font-size: 0.9rem;
   font-weight: 500;

@@ -19,6 +19,10 @@ Download YouTube playlists as MP3 albums with custom metadata. A local desktop a
 2. Run with Docker Compose:
 
 ```bash
+# Local profile (no external host mounts)
+docker compose -f docker-compose.local.yml up --build
+
+# Server profile (Navidrome + cookies host mounts)
 docker compose up --build
 ```
 

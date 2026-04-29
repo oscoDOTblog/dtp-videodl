@@ -1,0 +1,30 @@
+services:
+  api:
+    build: ./api
+    container_name: p2a_api_local
+    environment:
+      - DATA_DIR=/data
+      - MUSIC_LIBRARY_ROOT=/data/library
+      - COOKIES_DIR=/data/cookies
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8000
+      - CORS_ORIGINS=http://localhost:8546,http://localhost:3000
+    volumes:
+      - ./data:/data
+    ports:
+      - "8545:8000"
+    restart: unless-stopped
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+
+  web:
+    build: ./ui
+    container_name: p2a_web_local
+    environment:
+      - NEXT_PUBLIC_APP_NAME=Playlist2Album
+      - API_BASE_INTERNAL=http://api:8000
+      - NEXT_PUBLIC_API_BASE_EXTERNAL=http://localhost:8545
+    ports:
+      - "8546:3000"
+    depends_on:
+      - api
+    restart: unless-stopped

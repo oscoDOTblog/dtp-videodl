@@ -80,10 +80,12 @@ class TrackIn(BaseModel):
 class DownloadReq(BaseModel):
     playlist_url: str
     album: AlbumMeta
+    useCookies: bool = True
 
 
 class MetadataReq(BaseModel):
     playlist_url: str
+    useCookies: bool = True
 
 
 class MetadataResp(BaseModel):
@@ -131,7 +133,7 @@ class CookiesStatusResp(BaseModel):
     uploadedAt: Optional[str] = None
 
 
-def run_download_with_progress(job_id: str, playlist_url: str, template: str):
+def run_download_with_progress(job_id: str, playlist_url: str, template: str, use_cookies: bool = True):
     """Run yt-dlp and track progress"""
     cmd = build_yt_dlp_cmd([
         "yt-dlp",
@@ -143,7 +145,7 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
         "--audio-format", "mp3",
         "--ffmpeg-location", "/usr/bin/ffmpeg",
         "--progress",
-    ])
+    ], use_cookies=use_cookies)
     
     # Initialize progress (assume single video until we detect playlist)
     with progress_lock:
@@ -163,12 +165,13 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
         universal_newlines=True
     )
     
+    output_lines: List[str] = []
     # Parse output for progress
     for line in process.stdout:
         line = line.strip()
         if not line:
             continue
-        
+        output_lines.append(line)
         logger.debug(f"yt-dlp output: {line}")
             
         # Look for playlist info: "[youtube:tab] Playlist X: Y videos"
@@ -232,6 +235,10 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
     process.wait()
     
     if process.returncode != 0:
+        combined_output = "\n".join(output_lines)
+        if use_cookies and "Requested format is not available" in combined_output:
+            logger.warning("Retrying yt-dlp once without cookies due to format availability")
+            return run_download_with_progress(job_id, playlist_url, template, use_cookies=False)
         with progress_lock:
             progress_store[job_id]["status"] = "error"
         raise subprocess.CalledProcessError(process.returncode, cmd)
@@ -243,10 +250,10 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
         progress_store[job_id]["status"] = "completed"
 
 
-def process_download_async(job_id: str, playlist_url: str, template: str):
+def process_download_async(job_id: str, playlist_url: str, template: str, use_cookies: bool):
     """Process download in background thread"""
     try:
-        run_download_with_progress(job_id, playlist_url, template)
+        run_download_with_progress(job_id, playlist_url, template, use_cookies=use_cookies)
         logger.info(f"yt-dlp completed successfully for job {job_id}")
         
         # Build manifest
@@ -296,9 +303,9 @@ def fetch_cover_base64(url: Optional[str]) -> Optional[str]:
         return None
 
 
-def build_yt_dlp_cmd(base_cmd: List[str]) -> List[str]:
+def build_yt_dlp_cmd(base_cmd: List[str], use_cookies: bool = True) -> List[str]:
     cmd = list(base_cmd)
-    if COOKIES_FILE.exists():
+    if use_cookies and COOKIES_FILE.exists():
         cmd.extend(["--cookies", str(COOKIES_FILE)])
     return cmd
 
@@ -384,7 +391,7 @@ def metadata(req: MetadataReq):
         "--skip-download",
         "--no-warnings",
         req.playlist_url,
-    ])
+    ], use_cookies=req.useCookies)
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -542,7 +549,7 @@ def download(req: DownloadReq):
     # Start download in background thread
     thread = threading.Thread(
         target=process_download_async,
-        args=(job_id, req.playlist_url, template)
+        args=(job_id, req.playlist_url, template, req.useCookies)
     )
     thread.daemon = True
     thread.start()
