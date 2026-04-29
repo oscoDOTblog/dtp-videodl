@@ -4,16 +4,16 @@ overview: Add a second finalize action that saves tagged tracks directly into th
 todos:
   - id: backend-finalize-library
     content: Add reusable finalize helpers and new /finalize/library endpoint with overwrite semantics
-    status: pending
+    status: completed
   - id: frontend-library-button
     content: Add Save to Navidrome Library button and API proxy route
-    status: pending
+    status: completed
   - id: compose-music-mount
     content: Mount Navidrome music path into API container and configure MUSIC_LIBRARY_ROOT
-    status: pending
+    status: completed
   - id: verify-flows
     content: Verify both ZIP and Navidrome save flows and run lint checks
-    status: pending
+    status: completed
 isProject: false
 ---
 

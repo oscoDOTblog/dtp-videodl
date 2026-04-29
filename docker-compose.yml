@@ -4,11 +4,13 @@ services:
     container_name: p2a_api
     environment:
       - DATA_DIR=/data
+      - MUSIC_LIBRARY_ROOT=/music
       - UVICORN_HOST=0.0.0.0
       - UVICORN_PORT=8000
       - CORS_ORIGINS=http://localhost:8546,http://localhost:3000
     volumes:
       - ./data:/data
+      - /mnt/yuna/navidrome:/music
     ports:
       - "8545:8000"
     restart: unless-stopped

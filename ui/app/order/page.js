@@ -12,6 +12,7 @@ export default function OrderPage() {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function OrderPage() {
 
     setLoading(true);
     setError("");
+    setSuccessMessage("");
 
     try {
       const response = await fetch("/api/finalize", {
@@ -68,6 +70,39 @@ export default function OrderPage() {
       window.location.href = `${apiBaseExternal}${data.zip_url}`;
     } catch (err) {
       setError(err.message || "Failed to finalize album");
+      setLoading(false);
+    }
+  };
+
+  const saveToLibrary = async () => {
+    if (!job) return;
+
+    setLoading(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const response = await fetch("/api/finalize/library", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          job_id: job.job_id,
+          album: job.album,
+          ordered_tracks: tracks,
+          cover_base64: job.coverBase64 || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Save to library failed" }));
+        throw new Error(errorData.detail || "Save to library failed");
+      }
+
+      const data = await response.json();
+      setSuccessMessage(`Saved ${data.count || tracks.length} tracks to ${data.library_path}`);
+      setLoading(false);
+    } catch (err) {
+      setError(err.message || "Failed to save album to library");
       setLoading(false);
     }
   };
@@ -132,6 +167,7 @@ export default function OrderPage() {
         </div>
 
         {error && <div className={styles.error}>{error}</div>}
+        {successMessage && <div className={styles.loading}>{successMessage}</div>}
 
         <div className={styles.finalizeSection}>
           <button
@@ -141,9 +177,16 @@ export default function OrderPage() {
           >
             {loading ? "Finalizing..." : "Finalize & Download ZIP"}
           </button>
+          <button
+            onClick={saveToLibrary}
+            className={styles.finalizeButton}
+            disabled={loading || tracks.length === 0}
+          >
+            {loading ? "Finalizing..." : "Save to Navidrome Library"}
+          </button>
           {loading && (
             <div className={styles.loading}>
-              Setting metadata and creating ZIP file...
+              Setting metadata and processing tracks...
             </div>
           )}
         </div>

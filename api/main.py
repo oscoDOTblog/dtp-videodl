@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import uuid
 import zipfile
+import shutil
 import base64
 import json
 import re
@@ -26,6 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
+MUSIC_LIBRARY_ROOT = Path(os.environ.get("MUSIC_LIBRARY_ROOT", "/music")).resolve()
 JOBS_DIR = DATA_DIR / "jobs"
 OUT_DIR = DATA_DIR / "out"
 
@@ -102,6 +104,12 @@ class FinalizeReq(BaseModel):
 class FinalizeResp(BaseModel):
     ok: bool
     zip_url: str
+    count: int
+
+
+class LibraryFinalizeResp(BaseModel):
+    ok: bool
+    library_path: str
     count: int
 
 
@@ -320,6 +328,110 @@ def metadata(req: MetadataReq):
     return MetadataResp(title=title, artist=artist, year=year, cover_base64=cover_base64)
 
 
+def prepare_tracks(req: FinalizeReq) -> List[Path]:
+    try:
+        from mutagen.id3 import ID3, APIC, TIT2, TALB, TPE1, TDRC, TRCK
+        from mutagen.mp3 import MP3
+        logger.info("Mutagen imported successfully")
+    except Exception as e:
+        logger.error(f"Failed to import mutagen: {e}")
+        raise HTTPException(status_code=500, detail=f"mutagen import error: {e}")
+
+    job_dir = JOBS_DIR / req.job_id
+    if not job_dir.exists():
+        logger.error(f"Job directory not found: {job_dir}")
+        raise HTTPException(status_code=404, detail="job_id not found")
+
+    logger.info(f"Job directory exists: {job_dir}")
+
+    cover_bytes = None
+    if req.cover_base64:
+        try:
+            cover_bytes = base64.b64decode(req.cover_base64)
+            logger.info(f"Cover image decoded successfully ({len(cover_bytes)} bytes)")
+        except Exception as e:
+            logger.error(f"Failed to decode cover image: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid cover image: {e}")
+    else:
+        logger.info("No cover image provided")
+
+    album_title = sanitize(req.album.title)
+    album_artist = sanitize(req.album.artist)
+    album_year = req.album.year
+
+    logger.info(f"Sanitized album title: '{album_title}', artist: '{album_artist}', year: '{album_year}'")
+
+    # Tag and rename in job workspace
+    logger.info("Starting to tag and rename tracks...")
+    final_paths: List[Path] = []
+    for idx, t in enumerate(req.ordered_tracks, start=1):
+        src = Path(t.path)
+        if not src.exists():
+            logger.error(f"Track file not found: {src}")
+            raise HTTPException(status_code=400, detail=f"missing file: {src}")
+
+        logger.debug(f"Processing track {idx}/{len(req.ordered_tracks)}: {t.title}")
+
+        audio = MP3(src, ID3=ID3)
+        if audio.tags is None:
+            audio.add_tags()
+
+        audio.tags["TIT2"] = TIT2(encoding=3, text=sanitize(t.title))
+        audio.tags["TALB"] = TALB(encoding=3, text=album_title)
+        audio.tags["TPE1"] = TPE1(encoding=3, text=album_artist)
+        if album_year:
+            audio.tags["TDRC"] = TDRC(encoding=3, text=album_year)
+        audio.tags["TRCK"] = TRCK(encoding=3, text=str(idx))
+
+        if cover_bytes:
+            audio.tags["APIC"] = APIC(
+                encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_bytes
+            )
+
+        audio.save(v2_version=3)  # ID3v2.3 for max compatibility
+
+        new_name = job_dir / f"{str(idx).zfill(2)} - {sanitize(t.title)}.mp3"
+        if src != new_name:
+            src.rename(new_name)
+        req.ordered_tracks[idx - 1].path = str(new_name)
+        final_paths.append(new_name)
+
+    logger.info("All tracks tagged and renamed successfully")
+    return final_paths
+
+
+def create_zip(album_artist: str, album_title: str, tracks: List[Path]) -> Path:
+    zip_name = f"{album_artist} - {album_title}.zip" if album_artist else f"{album_title}.zip"
+    zip_path = OUT_DIR / sanitize(zip_name)
+    logger.info(f"Creating ZIP file: {zip_path}")
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for track in tracks:
+            zf.write(track, arcname=track.name)
+            logger.debug(f"Added to ZIP: {track.name}")
+
+    logger.info(f"ZIP file created successfully ({zip_path.stat().st_size} bytes)")
+    return zip_path
+
+
+def save_to_library(album_artist: str, album_title: str, tracks: List[Path]) -> Path:
+    artist_dir = sanitize(album_artist) if album_artist else "Unknown Artist"
+    album_dir = sanitize(album_title) if album_title else "Unknown Album"
+    target_dir = (MUSIC_LIBRARY_ROOT / artist_dir / album_dir).resolve()
+
+    # Ensure writes stay inside configured library root.
+    if MUSIC_LIBRARY_ROOT not in target_dir.parents and target_dir != MUSIC_LIBRARY_ROOT:
+        raise HTTPException(status_code=400, detail="invalid library destination")
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for track in tracks:
+        target_path = target_dir / track.name
+        shutil.copy2(track, target_path)
+        logger.info(f"Saved track to library: {target_path}")
+
+    return target_dir
+
+
 @app.post("/download", response_model=DownloadResp)
 def download(req: DownloadReq):
     job_id = str(uuid.uuid4())
@@ -378,96 +490,34 @@ def finalize(req: FinalizeReq):
     logger.info(f"Album metadata - Title: '{req.album.title}', Artist: '{req.album.artist}', Year: '{req.album.year}'")
     logger.info(f"Processing {len(req.ordered_tracks)} tracks")
     
-    try:
-        from mutagen.id3 import ID3, APIC, TIT2, TALB, TPE1, TDRC, TRCK
-        from mutagen.mp3 import MP3
-        logger.info("Mutagen imported successfully")
-    except Exception as e:
-        logger.error(f"Failed to import mutagen: {e}")
-        raise HTTPException(status_code=500, detail=f"mutagen import error: {e}")
-
-    job_dir = JOBS_DIR / req.job_id
-    if not job_dir.exists():
-        logger.error(f"Job directory not found: {job_dir}")
-        raise HTTPException(status_code=404, detail="job_id not found")
-
-    logger.info(f"Job directory exists: {job_dir}")
-
-    cover_bytes = None
-    if req.cover_base64:
-        try:
-            cover_bytes = base64.b64decode(req.cover_base64)
-            logger.info(f"Cover image decoded successfully ({len(cover_bytes)} bytes)")
-        except Exception as e:
-            logger.error(f"Failed to decode cover image: {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid cover image: {e}")
-    else:
-        logger.info("No cover image provided")
-
     album_title = sanitize(req.album.title)
     album_artist = sanitize(req.album.artist)
-    album_year = req.album.year
-
-    logger.info(f"Sanitized album title: '{album_title}', artist: '{album_artist}', year: '{album_year}'")
-
-    # Tag and rename
-    logger.info("Starting to tag and rename tracks...")
-    for idx, t in enumerate(req.ordered_tracks, start=1):
-        src = Path(t.path)
-        if not src.exists():
-            logger.error(f"Track file not found: {src}")
-            raise HTTPException(status_code=400, detail=f"missing file: {src}")
-
-        logger.debug(f"Processing track {idx}/{len(req.ordered_tracks)}: {t.title}")
-
-        # Write ID3
-        audio = MP3(src, ID3=ID3)
-        if audio.tags is None:
-            audio.add_tags()
-
-        audio.tags["TIT2"] = TIT2(encoding=3, text=sanitize(t.title))
-        audio.tags["TALB"] = TALB(encoding=3, text=album_title)
-        audio.tags["TPE1"] = TPE1(encoding=3, text=album_artist)
-        if album_year:
-            audio.tags["TDRC"] = TDRC(encoding=3, text=album_year)
-        audio.tags["TRCK"] = TRCK(encoding=3, text=str(idx))
-
-        if cover_bytes:
-            audio.tags["APIC"] = APIC(
-                encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_bytes
-            )
-            logger.debug(f"Added cover art to track {idx}")
-
-        audio.save(v2_version=3)  # ID3v2.3 for max compatibility
-        logger.debug(f"Saved ID3 tags for track {idx}")
-
-        # Rename to NN - Title.mp3
-        new_name = job_dir / f"{str(idx).zfill(2)} - {sanitize(t.title)}.mp3"
-        if src != new_name:
-            src.rename(new_name)
-            logger.debug(f"Renamed track {idx} to {new_name.name}")
-        req.ordered_tracks[idx - 1].path = str(new_name)
-
-    logger.info("All tracks tagged and renamed successfully")
-
-    # Zip album
-    zip_name = f"{album_artist} - {album_title}.zip" if album_artist else f"{album_title}.zip"
-    zip_path = OUT_DIR / sanitize(zip_name)
-    logger.info(f"Creating ZIP file: {zip_path}")
-
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for t in req.ordered_tracks:
-            p = Path(t.path)
-            zf.write(p, arcname=p.name)
-            logger.debug(f"Added to ZIP: {p.name}")
-
-    zip_size = zip_path.stat().st_size
-    logger.info(f"ZIP file created successfully ({zip_size} bytes)")
+    tracks = prepare_tracks(req)
+    zip_path = create_zip(album_artist, album_title, tracks)
     logger.info(f"Finalize job {req.job_id} completed successfully")
 
     return FinalizeResp(
         ok=True,
         zip_url=f"/download/{zip_path.name}",
+        count=len(req.ordered_tracks)
+    )
+
+
+@app.post("/finalize/library", response_model=LibraryFinalizeResp)
+def finalize_library(req: FinalizeReq):
+    logger.info(f"Starting library finalize job {req.job_id}")
+    logger.info(f"Album metadata - Title: '{req.album.title}', Artist: '{req.album.artist}', Year: '{req.album.year}'")
+    logger.info(f"Processing {len(req.ordered_tracks)} tracks")
+
+    album_title = sanitize(req.album.title)
+    album_artist = sanitize(req.album.artist)
+    tracks = prepare_tracks(req)
+    library_dir = save_to_library(album_artist, album_title, tracks)
+
+    logger.info(f"Library finalize job {req.job_id} completed successfully")
+    return LibraryFinalizeResp(
+        ok=True,
+        library_path=str(library_dir),
         count=len(req.ordered_tracks)
     )
 
