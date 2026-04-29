@@ -141,6 +141,10 @@
   letter-spacing: 1px;
 }
 
+.finalizeButton + .finalizeButton {
+  margin-top: 1rem;
+}
+
 .finalizeButton:hover:not(:disabled) {
   background: var(--accent-pink-hover);
   transform: translateY(-1px);
