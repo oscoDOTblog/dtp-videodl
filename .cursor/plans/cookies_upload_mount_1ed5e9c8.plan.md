@@ -4,19 +4,19 @@ overview: Add a cookies upload flow on the first page, persist the uploaded `coo
 todos:
   - id: backend-cookies-api
     content: Add cookies storage config, upload/status endpoints, and yt-dlp cookie flag integration
-    status: pending
+    status: completed
   - id: frontend-cookies-ui
     content: Add first-page cookies upload/status UI and integrate with new API routes
-    status: pending
+    status: completed
   - id: api-proxy-cookies-routes
     content: Add Next API proxy routes for cookies status and upload
-    status: pending
+    status: completed
   - id: compose-cookies-mount
     content: Mount /mnt/yuna/navidrome/data as /cookies and set COOKIES_DIR env var
-    status: pending
+    status: completed
   - id: verify-cookies-flow
     content: Validate upload/status + yt-dlp cookie usage and run lint/syntax checks
-    status: pending
+    status: completed
 isProject: false
 ---
 

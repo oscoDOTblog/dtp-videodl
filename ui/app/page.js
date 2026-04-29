@@ -16,10 +16,36 @@ export default function Home() {
   const [coverFileName, setCoverFileName] = useState("");
   const [coverPreview, setCoverPreview] = useState("");
   const [loading, setLoading] = useState(false);
+  const [cookiesLoading, setCookiesLoading] = useState(false);
+  const [cookiesStatus, setCookiesStatus] = useState({ hasCookies: false, uploadedAt: null });
+  const [cookiesMessage, setCookiesMessage] = useState("");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState({ current: 0, total: 0, status: "", currentTitle: "" });
   const progressIntervalRef = useRef(null);
   const router = useRouter();
+
+  const formatUploadedAt = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
+  };
+
+  const loadCookiesStatus = async () => {
+    try {
+      const response = await fetch("/api/cookies/status");
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      setCookiesStatus({
+        hasCookies: Boolean(data.hasCookies),
+        uploadedAt: data.uploadedAt || null,
+      });
+    } catch (err) {
+      console.error("Failed to load cookies status:", err);
+    }
+  };
 
   const toBase64 = (file) =>
     new Promise((resolve, reject) => {
@@ -270,6 +296,10 @@ export default function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    loadCookiesStatus();
+  }, []);
+
   // Show browser notification
   const showNotification = (title, options = {}) => {
     if ("Notification" in window && Notification.permission === "granted") {
@@ -350,6 +380,43 @@ export default function Home() {
     }
   };
 
+  const handleCookiesUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCookiesLoading(true);
+    setCookiesMessage("");
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/cookies/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Cookies upload failed" }));
+        throw new Error(errorData.detail || "Cookies upload failed");
+      }
+
+      const data = await response.json();
+      setCookiesStatus({
+        hasCookies: Boolean(data.hasCookies),
+        uploadedAt: data.uploadedAt || null,
+      });
+      setCookiesMessage("Cookies uploaded successfully");
+      await loadCookiesStatus();
+    } catch (err) {
+      setError(err.message || "Failed to upload cookies");
+    } finally {
+      setCookiesLoading(false);
+      e.target.value = "";
+    }
+  };
+
   return (
     <div className={styles.container}>
       <main className={styles.main}>
@@ -376,6 +443,28 @@ export default function Home() {
               required
               disabled={loading || metadataLoading}
             />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label} htmlFor="cookiesUpload">
+              YouTube Cookies (cookies.txt)
+            </label>
+            <label className={styles.fileInputLabel} htmlFor="cookiesUpload">
+              {cookiesLoading ? "Uploading..." : "Upload Cookies"}
+              <input
+                id="cookiesUpload"
+                type="file"
+                accept=".txt,text/plain"
+                onChange={handleCookiesUpload}
+                disabled={loading || metadataLoading || cookiesLoading}
+              />
+            </label>
+            <div className={styles.fileName}>
+              {cookiesStatus.hasCookies
+                ? `Last uploaded: ${formatUploadedAt(cookiesStatus.uploadedAt)}`
+                : "No cookies uploaded yet"}
+            </div>
+            {cookiesMessage && <div className={styles.loading}>{cookiesMessage}</div>}
           </div>
 
           <button

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -14,6 +14,7 @@ import re
 import os
 import logging
 import threading
+from datetime import datetime, timezone
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
 from collections import defaultdict
@@ -28,11 +29,15 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MUSIC_LIBRARY_ROOT = Path(os.environ.get("MUSIC_LIBRARY_ROOT", "/music")).resolve()
+COOKIES_DIR = Path(os.environ.get("COOKIES_DIR", "/cookies")).resolve()
+COOKIES_FILE = COOKIES_DIR / "youtube.cookies.txt"
+COOKIES_META_FILE = COOKIES_DIR / "youtube.cookies.meta.json"
 JOBS_DIR = DATA_DIR / "jobs"
 OUT_DIR = DATA_DIR / "out"
 
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
 OUT_DIR.mkdir(parents=True, exist_ok=True)
+COOKIES_DIR.mkdir(parents=True, exist_ok=True)
 
 # In-memory progress tracking
 progress_store = defaultdict(dict)
@@ -121,9 +126,14 @@ class ProgressResp(BaseModel):
     current_title: Optional[str] = None
 
 
+class CookiesStatusResp(BaseModel):
+    hasCookies: bool
+    uploadedAt: Optional[str] = None
+
+
 def run_download_with_progress(job_id: str, playlist_url: str, template: str):
     """Run yt-dlp and track progress"""
-    cmd = [
+    cmd = build_yt_dlp_cmd([
         "yt-dlp",
         playlist_url,
         "-o", template,
@@ -132,7 +142,7 @@ def run_download_with_progress(job_id: str, playlist_url: str, template: str):
         "--audio-format", "mp3",
         "--ffmpeg-location", "/usr/bin/ffmpeg",
         "--progress",
-    ]
+    ])
     
     # Initialize progress (assume single video until we detect playlist)
     with progress_lock:
@@ -286,15 +296,95 @@ def fetch_cover_base64(url: Optional[str]) -> Optional[str]:
         return None
 
 
+def build_yt_dlp_cmd(base_cmd: List[str]) -> List[str]:
+    cmd = list(base_cmd)
+    if COOKIES_FILE.exists():
+        cmd.extend(["--cookies", str(COOKIES_FILE)])
+    return cmd
+
+
+def looks_like_netscape_cookies(content: str) -> bool:
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    if not lines:
+        return False
+    if lines[0].startswith("# Netscape HTTP Cookie File"):
+        return True
+
+    for line in lines:
+        if line.startswith("#"):
+            continue
+        if len(line.split("\t")) >= 7:
+            return True
+    return False
+
+
+def get_cookies_uploaded_at() -> Optional[str]:
+    if COOKIES_META_FILE.exists():
+        try:
+            payload = json.loads(COOKIES_META_FILE.read_text(encoding="utf-8"))
+            uploaded_at = payload.get("uploadedAt")
+            if isinstance(uploaded_at, str) and uploaded_at:
+                return uploaded_at
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if COOKIES_FILE.exists():
+        try:
+            modified = datetime.fromtimestamp(COOKIES_FILE.stat().st_mtime, timezone.utc)
+            return modified.isoformat()
+        except OSError:
+            return None
+    return None
+
+
+@app.get("/cookies/status", response_model=CookiesStatusResp)
+def cookies_status():
+    has_cookies = COOKIES_FILE.exists()
+    uploaded_at = get_cookies_uploaded_at()
+    return CookiesStatusResp(hasCookies=has_cookies, uploadedAt=uploaded_at)
+
+
+@app.post("/cookies/upload", response_model=CookiesStatusResp)
+async def upload_cookies(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="cookies file name is required")
+
+    content_bytes = await file.read()
+    if not content_bytes:
+        raise HTTPException(status_code=400, detail="cookies file is empty")
+
+    try:
+        content = content_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        content = content_bytes.decode("latin-1")
+
+    if not looks_like_netscape_cookies(content):
+        raise HTTPException(status_code=400, detail="invalid cookies file format")
+
+    try:
+        COOKIES_DIR.mkdir(parents=True, exist_ok=True)
+        COOKIES_FILE.write_text(content, encoding="utf-8")
+        uploaded_at = datetime.now(timezone.utc).isoformat()
+        COOKIES_META_FILE.write_text(
+            json.dumps({"uploadedAt": uploaded_at}, ensure_ascii=True),
+            encoding="utf-8"
+        )
+    except OSError as e:
+        logger.error(f"Failed saving cookies file: {e}")
+        raise HTTPException(status_code=500, detail="failed to persist cookies file")
+
+    return CookiesStatusResp(hasCookies=True, uploadedAt=uploaded_at)
+
+
 @app.post("/metadata", response_model=MetadataResp)
 def metadata(req: MetadataReq):
-    cmd = [
+    cmd = build_yt_dlp_cmd([
         "yt-dlp",
         "--dump-single-json",
         "--skip-download",
         "--no-warnings",
         req.playlist_url,
-    ]
+    ])
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
