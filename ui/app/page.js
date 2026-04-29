@@ -6,7 +6,7 @@ import styles from "./page.module.css";
 
 export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState("");
-  const [useCookies, setUseCookies] = useState(true);
+  const [useCookies, setUseCookies] = useState(false);
   const [albumTitle, setAlbumTitle] = useState("");
   const [albumArtist, setAlbumArtist] = useState("");
   const [year, setYear] = useState("");
@@ -189,7 +189,7 @@ export default function Home() {
     setAlbumTitle("");
     setAlbumArtist("");
     setYear("");
-    setUseCookies(true);
+    setUseCookies(false);
     setAutoCoverBase64("");
     setCover(null);
     setCoverFileName("");

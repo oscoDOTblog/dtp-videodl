@@ -497,6 +497,17 @@ def prepare_tracks(req: FinalizeReq) -> List[Path]:
     return final_paths
 
 
+def cleanup_job_dir(job_id: str) -> None:
+    job_dir = JOBS_DIR / job_id
+    if not job_dir.exists():
+        return
+    try:
+        shutil.rmtree(job_dir, ignore_errors=False)
+        logger.info(f"Cleaned up job directory: {job_dir}")
+    except OSError as e:
+        logger.warning(f"Failed to cleanup job directory {job_dir}: {e}")
+
+
 def create_zip(album_artist: str, album_title: str, tracks: List[Path]) -> Path:
     zip_name = f"{album_artist} - {album_title}.zip" if album_artist else f"{album_title}.zip"
     zip_path = OUT_DIR / sanitize(zip_name)
@@ -514,17 +525,40 @@ def create_zip(album_artist: str, album_title: str, tracks: List[Path]) -> Path:
 def save_to_library(album_artist: str, album_title: str, tracks: List[Path]) -> Path:
     artist_dir = sanitize(album_artist) if album_artist else "Unknown Artist"
     album_dir = sanitize(album_title) if album_title else "Unknown Album"
-    target_dir = (MUSIC_LIBRARY_ROOT / artist_dir / album_dir).resolve()
+    artist_root = (MUSIC_LIBRARY_ROOT / artist_dir).resolve()
+    target_dir = (artist_root / album_dir).resolve()
 
     # Ensure writes stay inside configured library root.
     if MUSIC_LIBRARY_ROOT not in target_dir.parents and target_dir != MUSIC_LIBRARY_ROOT:
         raise HTTPException(status_code=400, detail="invalid library destination")
 
-    target_dir.mkdir(parents=True, exist_ok=True)
+    artist_root.mkdir(parents=True, exist_ok=True)
+    staging_dir = artist_root / f".{album_dir}.staging-{uuid.uuid4().hex}"
+    backup_dir = artist_root / f".{album_dir}.backup-{uuid.uuid4().hex}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
     for track in tracks:
-        target_path = target_dir / track.name
-        shutil.copy2(track, target_path)
-        logger.info(f"Saved track to library: {target_path}")
+        staged_path = staging_dir / track.name
+        shutil.copy2(track, staged_path)
+        logger.info(f"Staged track to library: {staged_path}")
+
+    # Atomic-ish directory swap to avoid Navidrome reading half-written albums.
+    # 1) move existing album out of the way, 2) move staged album into final name, 3) cleanup backup.
+    if target_dir.exists():
+        target_dir.rename(backup_dir)
+
+    try:
+        staging_dir.rename(target_dir)
+    except Exception as e:
+        # Best effort rollback if we moved the original away.
+        if backup_dir.exists() and not target_dir.exists():
+            backup_dir.rename(target_dir)
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"failed to promote staged library album: {e}")
+
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
     return target_dir
 
@@ -591,6 +625,7 @@ def finalize(req: FinalizeReq):
     album_artist = sanitize(req.album.artist)
     tracks = prepare_tracks(req)
     zip_path = create_zip(album_artist, album_title, tracks)
+    cleanup_job_dir(req.job_id)
     logger.info(f"Finalize job {req.job_id} completed successfully")
 
     return FinalizeResp(
@@ -610,6 +645,7 @@ def finalize_library(req: FinalizeReq):
     album_artist = sanitize(req.album.artist)
     tracks = prepare_tracks(req)
     library_dir = save_to_library(album_artist, album_title, tracks)
+    cleanup_job_dir(req.job_id)
 
     logger.info(f"Library finalize job {req.job_id} completed successfully")
     return LibraryFinalizeResp(
