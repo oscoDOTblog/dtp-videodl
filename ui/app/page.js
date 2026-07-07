@@ -79,7 +79,7 @@ export default function Home() {
             progressIntervalRef.current = null;
           }
           // Show notification when download completes
-          showNotification("Playlist2Album Complete!", {
+          showNotification("VideoDL complete!", {
             body: `Downloaded ${progressData.current || progressData.total || 0} of ${progressData.total || 0} videos. Processing tracks...`,
             tag: "download-progress",
           });
@@ -92,7 +92,7 @@ export default function Home() {
             progressIntervalRef.current = null;
           }
           showNotification("Download Failed", {
-            body: "There was an error downloading the playlist.",
+            body: "There was an error downloading.",
             tag: "download-error",
           });
           return true; // Signal completion
@@ -168,7 +168,7 @@ export default function Home() {
         const croppedDataUrl = await cropDataUrlToSquare(sourceDataUrl, "image/jpeg");
         setAutoCoverBase64(croppedDataUrl.split(",").pop() || "");
         setCover(null);
-        setCoverFileName("Auto-filled from playlist");
+        setCoverFileName("Auto-filled from source");
         setCoverPreview(croppedDataUrl);
       } else {
         setAutoCoverBase64("");
@@ -257,7 +257,7 @@ export default function Home() {
                 );
 
                 // Show notification
-                showNotification("Playlist2Album Complete!", {
+                showNotification("VideoDL complete!", {
                   body: `Successfully downloaded ${finalData.tracks?.length || 0} tracks. Ready to proceed to ordering.`,
                   tag: "download-complete",
                 });
@@ -281,7 +281,7 @@ export default function Home() {
       // Also poll immediately
       await pollProgress(jobId);
     } catch (err) {
-      setError(err.message || "Failed to download playlist");
+      setError(err.message || "Failed to download");
       setLoading(false);
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
@@ -425,7 +425,7 @@ export default function Home() {
       <main className={styles.main}>
         <h1 className={styles.title}>Playlist → Album</h1>
         <p className={styles.subtitle}>
-          Download YouTube playlists as MP3 albums with custom metadata
+          Download playlists and tracks from YouTube, SoundCloud, and other supported sites as tagged MP3 albums
         </p>
 
         <form onSubmit={onSubmit} className={styles.form}>
@@ -433,13 +433,13 @@ export default function Home() {
             <>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="playlistUrl">
-                  YouTube Playlist URL
+                  Playlist or track URL
                 </label>
                 <input
                   id="playlistUrl"
                   className={styles.input}
                   type="url"
-                  placeholder="https://www.youtube.com/playlist?list=..."
+                  placeholder="https://youtube.com/playlist?list=... or https://soundcloud.com/artist/sets/..."
                   value={playlistUrl}
                   onChange={(e) => {
                     setPlaylistUrl(e.target.value);
@@ -470,8 +470,11 @@ export default function Home() {
 
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="cookiesUpload">
-                  YouTube Cookies (cookies.txt)
+                  Cookies (optional)
                 </label>
+                <p className={styles.fileName}>
+                  For age-restricted or login-required content on supported sites (e.g. YouTube)
+                </p>
                 <label className={styles.fileInputLabel} htmlFor="cookiesUpload">
                   {cookiesLoading ? "Uploading..." : "Upload Cookies"}
                   <input
@@ -626,7 +629,7 @@ export default function Home() {
               {progress.total > 0 ? (
                 <>
                   <div className={styles.progressText}>
-                    Downloading {progress.current} of {progress.total} videos...
+                    Downloading {progress.current} of {progress.total} tracks...
                   </div>
                   {progress.currentTitle && (
                     <div className={styles.currentTitle}>

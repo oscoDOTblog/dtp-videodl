@@ -43,7 +43,7 @@ COOKIES_DIR.mkdir(parents=True, exist_ok=True)
 progress_store = defaultdict(dict)
 progress_lock = threading.Lock()
 
-app = FastAPI(title="Playlist2Album API")
+app = FastAPI(title="VideoDL API")
 
 # Enable CORS for local development
 cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:8546")
@@ -290,7 +290,7 @@ def fetch_cover_base64(url: Optional[str]) -> Optional[str]:
     if not url:
         return None
 
-    headers = {"User-Agent": "Mozilla/5.0 Playlist2Album/1.0"}
+    headers = {"User-Agent": "Mozilla/5.0 VideoDL/1.0"}
     req = urllib_request.Request(url, headers=headers)
     try:
         with urllib_request.urlopen(req, timeout=10) as response:

@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Playlist2Album",
-  description: "Download YouTube playlists as MP3 albums with metadata",
+  title: "VideoDL",
+  description: "Download playlists and tracks from supported sites as tagged MP3 albums",
 };
 
 export default function RootLayout({ children }) {

@@ -1,17 +1,17 @@
-# Playlist2Album
+# VideoDL
 
-Download YouTube playlists as MP3 albums with custom metadata. A local desktop app built with Next.js UI and Python FastAPI backend.
+Download playlists and tracks from YouTube, SoundCloud, and other yt-dlp-supported sites as MP3 albums with custom metadata. A local app built with Next.js UI and Python FastAPI backend.
 
 ## Features
 
-- **Step 1**: Enter YouTube playlist URL and set album metadata (title, artist, year, cover art)
+- **Step 1**: Enter a playlist or track URL and set album metadata (title, artist, year, cover art)
 - **Step 2**: Reorder tracks and edit track titles
 - **Final**: Download ZIP file with properly tagged MP3s ready for music apps
 
 ## Requirements
 
 - Docker and Docker Compose
-- YouTube playlist URL
+- A playlist or track URL from a supported site (e.g. YouTube, SoundCloud)
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ docker compose up --build
 ## Project Structure
 
 ```
-playlist2album/
+dtp-videodl/
 ├── docker-compose.yml    # Docker Compose configuration
 ├── api/                  # Python FastAPI backend
 │   ├── Dockerfile
@@ -42,7 +42,7 @@ playlist2album/
 ├── ui/                   # Next.js frontend
 │   ├── Dockerfile
 │   ├── app/
-│   │   ├── page.js      # Step 1: Form with playlist URL
+│   │   ├── page.js      # Step 1: Form with media URL
 │   │   ├── order/
 │   │   │   └── page.js  # Step 2: Reorder tracks
 │   │   └── api/         # Proxy routes to FastAPI
@@ -54,9 +54,9 @@ playlist2album/
 
 ## Usage
 
-1. **Enter Playlist URL**: Paste your YouTube playlist URL
+1. **Enter URL**: Paste a playlist or track URL (YouTube, SoundCloud, etc.)
 2. **Set Album Metadata**: Fill in album title, artist, year, and optionally upload cover art
-3. **Download**: Click "Fetch & Convert" - this downloads all videos as MP3s
+3. **Download**: Click "Fetch & Convert" — this downloads all tracks as MP3s
 4. **Reorder**: On the order page, drag tracks up/down or edit titles
 5. **Finalize**: Click "Finalize & Download ZIP" to get your tagged album
 
@@ -69,6 +69,6 @@ playlist2album/
 
 ## Notes
 
-- All processing happens locally - no cloud uploads
+- All processing happens locally — no cloud uploads
 - Ensure you have rights to download/convert the content
-- YouTube ToS/copyright may prohibit downloading content
+- Site terms of service and copyright laws may prohibit downloading content
