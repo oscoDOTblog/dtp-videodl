@@ -2,17 +2,25 @@ services:
   api:
     build: ./api
     container_name: p2a_api_local
+    env_file:
+      - .env
     environment:
-      - DATA_DIR=/data
-      - MUSIC_LIBRARY_ROOT=/data/library
-      - COOKIES_DIR=/data/cookies
-      - UVICORN_HOST=0.0.0.0
-      - UVICORN_PORT=8000
-      - CORS_ORIGINS=http://localhost:8546,http://localhost:3000
+      DATA_DIR: /data
+      MUSIC_LIBRARY_ROOT: /music
+      COOKIES_DIR: /data/cookies
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: 8000
+      CORS_ORIGINS: http://localhost:8546,http://localhost:3000
+      MAX_DOWNLOAD_WORKERS: ${MAX_DOWNLOAD_WORKERS:-1}
+      DTP_TUNES_API_URL: ${DTP_TUNES_API_URL:-http://host.docker.internal:8080}
+      DTP_TUNES_INGEST_TOKEN: ${DTP_TUNES_INGEST_TOKEN:-}
     volumes:
       - ./data:/data
+      - ${MUSIC_HOST_PATH:-./data/library}:/music
     ports:
-      - "8545:8000"
+      - "127.0.0.1:8545:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
 
@@ -20,9 +28,9 @@ services:
     build: ./ui
     container_name: p2a_web_local
     environment:
-      - NEXT_PUBLIC_APP_NAME=VideoDL
-      - API_BASE_INTERNAL=http://api:8000
-      - NEXT_PUBLIC_API_BASE_EXTERNAL=http://localhost:8545
+      NEXT_PUBLIC_APP_NAME: VideoDL
+      API_BASE_INTERNAL: http://api:8000
+      NEXT_PUBLIC_API_BASE_EXTERNAL: http://127.0.0.1:8545
     ports:
       - "8546:3000"
     depends_on:

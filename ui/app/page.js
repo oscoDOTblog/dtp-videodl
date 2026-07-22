@@ -17,6 +17,8 @@ export default function Home() {
   const [coverFileName, setCoverFileName] = useState("");
   const [coverPreview, setCoverPreview] = useState("");
   const [loading, setLoading] = useState(false);
+  const [enqueueing, setEnqueueing] = useState(false);
+  const [queueMessage, setQueueMessage] = useState("");
   const [cookiesLoading, setCookiesLoading] = useState(false);
   const [cookiesStatus, setCookiesStatus] = useState({ hasCookies: false, uploadedAt: null });
   const [cookiesMessage, setCookiesMessage] = useState("");
@@ -59,50 +61,6 @@ export default function Home() {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-
-  const pollProgress = async (jobId) => {
-    try {
-      const response = await fetch(`/api/progress?jobId=${jobId}`);
-      if (response.ok) {
-        const progressData = await response.json();
-        setProgress({
-          current: progressData.current || 0,
-          total: progressData.total || 0,
-          status: progressData.status || "",
-          currentTitle: progressData.current_title || "",
-        });
-        
-        // If completed or error, stop polling
-        if (progressData.status === "completed") {
-          if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current);
-            progressIntervalRef.current = null;
-          }
-          // Show notification when download completes
-          showNotification("VideoDL complete!", {
-            body: `Downloaded ${progressData.current || progressData.total || 0} of ${progressData.total || 0} videos. Processing tracks...`,
-            tag: "download-progress",
-          });
-          return true; // Signal completion
-        }
-        
-        if (progressData.status === "error") {
-          if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current);
-            progressIntervalRef.current = null;
-          }
-          showNotification("Download Failed", {
-            body: "There was an error downloading.",
-            tag: "download-error",
-          });
-          return true; // Signal completion
-        }
-      }
-    } catch (err) {
-      console.error("Error polling progress:", err);
-    }
-    return false;
-  };
 
   const cropDataUrlToSquare = (dataUrl, outputType = "image/jpeg") => {
     return new Promise((resolve, reject) => {
@@ -196,98 +154,131 @@ export default function Home() {
     setCoverPreview("");
     setDetailsVisible(false);
     setError("");
+    setQueueMessage("");
+    setProgress({ current: 0, total: 0, status: "", currentTitle: "" });
   };
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    if (!detailsVisible || metadataLoading) return;
+  const buildCoverBase64 = async () => {
+    if (cover) return toBase64(cover);
+    return autoCoverBase64 || null;
+  };
+
+  const enqueueJob = async (mode) => {
+    const response = await fetch("/api/queue/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        playlistUrl,
+        useCookies,
+        album: {
+          title: albumTitle,
+          artist: albumArtist,
+          year,
+        },
+        coverBase64: await buildCoverBase64(),
+      }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: "Failed to enqueue" }));
+      throw new Error(errorData.detail || "Failed to enqueue");
+    }
+    return response.json();
+  };
+
+  const pollQueueJob = async (jobId) => {
+    try {
+      const response = await fetch(`/api/queue/jobs/${jobId}`);
+      if (!response.ok) return false;
+      const job = await response.json();
+      setProgress({
+        current: job.current || 0,
+        total: job.total || 0,
+        status: job.status || "",
+        currentTitle: job.currentTitle || "",
+      });
+
+      if (job.status === "readyForReview") {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+        showNotification("VideoDL ready", {
+          body: "Download finished. Review track order next.",
+          tag: "download-complete",
+        });
+        router.push(`/order?jobId=${jobId}`);
+        return true;
+      }
+
+      if (job.status === "failed" || job.status === "cancelled") {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+        setError(job.error || `Job ${job.status}`);
+        setLoading(false);
+        showNotification("Download Failed", {
+          body: job.error || `Job ${job.status}`,
+          tag: "download-error",
+        });
+        return true;
+      }
+    } catch (err) {
+      console.error("Error polling queue job:", err);
+    }
+    return false;
+  };
+
+  const startOneOff = async () => {
+    if (!detailsVisible || metadataLoading || loading || enqueueing) return;
     setLoading(true);
     setError("");
+    setQueueMessage("");
     setProgress({ current: 0, total: 0, status: "starting", currentTitle: "" });
 
     try {
-      // Start download (this will return immediately with job_id)
-      const response = await fetch("/api/download", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          playlist_url: playlistUrl,
-          useCookies: useCookies,
-          album: {
-            title: albumTitle,
-            artist: albumArtist,
-            year: year,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Download failed" }));
-        throw new Error(errorData.detail || "Download failed");
-      }
-
-      const data = await response.json();
-      const jobId = data.job_id;
-
-      // Poll for progress
+      const job = await enqueueJob("oneOff");
+      const jobId = job.id;
       progressIntervalRef.current = setInterval(async () => {
-        const completed = await pollProgress(jobId);
-        if (completed) {
-          // Wait a moment then fetch final result
-          setTimeout(async () => {
-            try {
-              // Fetch the download result to get tracks
-              const finalResponse = await fetch(`/api/download/result?jobId=${jobId}`);
-              
-              if (finalResponse.ok) {
-                const finalData = await finalResponse.json();
-                const coverBase64 = cover ? await toBase64(cover) : autoCoverBase64 || null;
-
-                sessionStorage.setItem(
-                  "p2a-manifest",
-                  JSON.stringify({
-                    ...finalData,
-                    album: {
-                      title: albumTitle,
-                      artist: albumArtist,
-                      year: year,
-                    },
-                    coverBase64,
-                  })
-                );
-
-                // Show notification
-                showNotification("VideoDL complete!", {
-                  body: `Successfully downloaded ${finalData.tracks?.length || 0} tracks. Ready to proceed to ordering.`,
-                  tag: "download-complete",
-                });
-
-                router.push("/order");
-              } else if (finalResponse.status === 202) {
-                // Still processing, continue polling
-                return;
-              } else {
-                const errorData = await finalResponse.json().catch(() => ({ detail: "Failed to get result" }));
-                throw new Error(errorData.detail || "Failed to get download result");
-              }
-            } catch (err) {
-              setError(err.message || "Failed to get download result");
-              setLoading(false);
-            }
-          }, 1000);
-        }
-      }, 1000); // Poll every second
-
-      // Also poll immediately
-      await pollProgress(jobId);
+        await pollQueueJob(jobId);
+      }, 1000);
+      await pollQueueJob(jobId);
     } catch (err) {
-      setError(err.message || "Failed to download");
+      setError(err.message || "Failed to start download");
       setLoading(false);
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
     }
+  };
+
+  const addToQueue = async () => {
+    if (!detailsVisible || metadataLoading || loading || enqueueing) return;
+    setEnqueueing(true);
+    setError("");
+    setQueueMessage("");
+    try {
+      const job = await enqueueJob("queue");
+      setQueueMessage(`Added “${albumTitle || "Untitled"}” to the queue.`);
+      showNotification("Added to queue", {
+        body: albumTitle || job.id,
+        tag: "queue-added",
+      });
+      startOver();
+      setQueueMessage(`Added to queue. Track progress on Current Queue.`);
+    } catch (err) {
+      setError(err.message || "Failed to add to queue");
+    } finally {
+      setEnqueueing(false);
+    }
+  };
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    // Default form submit uses one-off mode.
+    await startOneOff();
   };
 
   // Request notification permission on mount
@@ -614,14 +605,28 @@ export default function Home() {
           )}
 
           {error && <div className={styles.error}>{error}</div>}
+          {queueMessage && <div className={styles.loading}>{queueMessage}</div>}
 
-          <button
-            type="submit"
-            className={styles.button}
-            disabled={loading || metadataLoading || !playlistUrl || !detailsVisible}
-          >
-            {loading ? "Downloading..." : "Fetch & Convert"}
-          </button>
+          {detailsVisible && (
+            <div className={styles.actionRow}>
+              <button
+                type="button"
+                className={styles.button}
+                onClick={startOneOff}
+                disabled={loading || enqueueing || metadataLoading || !playlistUrl}
+              >
+                {loading ? "Downloading…" : "One-off download"}
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addToQueue}
+                disabled={loading || enqueueing || metadataLoading || !playlistUrl}
+              >
+                {enqueueing ? "Adding…" : "Add to queue"}
+              </button>
+            </div>
+          )}
 
           {loading && (
             <div className={styles.loading}>

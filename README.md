@@ -1,74 +1,112 @@
 # VideoDL
 
-Download playlists and tracks from YouTube, SoundCloud, and other yt-dlp-supported sites as MP3 albums with custom metadata. A local app built with Next.js UI and Python FastAPI backend.
+Download playlists and tracks from YouTube, SoundCloud, and other yt-dlp-supported sites as MP3 albums, then save them into the shared **DTP Tunes** music library. Next.js UI + Python FastAPI backend with a durable SQLite download queue.
 
 ## Features
 
-- **Step 1**: Enter a playlist or track URL and set album metadata (title, artist, year, cover art)
-- **Step 2**: Reorder tracks and edit track titles
-- **Final**: Download ZIP file with properly tagged MP3s ready for music apps
+- **Load metadata**: Paste a playlist/track URL and review/edit album metadata and cover art
+- **One-off download**: Download with live progress → reorder/edit tracks → **Save to DTP Tunes**
+- **Queue mode**: Add jobs to a durable background queue; the worker tags, atomically saves, and requests a DTP Tunes library scan automatically
+- **Current Queue** page with progress, cancel, retry, and history cleanup
+- Shared host music folder with dtp-tunes via `MUSIC_HOST_PATH`
 
 ## Requirements
 
 - Docker and Docker Compose
-- A playlist or track URL from a supported site (e.g. YouTube, SoundCloud)
+- A playlist or track URL from a supported site
+- The same host music path as dtp-tunes (`MUSIC_HOST_PATH`)
+- Matching `DTP_TUNES_INGEST_TOKEN` in both projects when scan handoff is enabled
 
 ## Quick Start
 
-1. Clone this repository
-2. Run with Docker Compose:
+1. Copy `.env.example` to `.env` and set:
 
 ```bash
-# Local profile (no external host mounts)
+MUSIC_HOST_PATH=/Users/argo/Music/Navidrome   # must match dtp-tunes
+DTP_TUNES_API_URL=http://host.docker.internal:8080
+DTP_TUNES_INGEST_TOKEN=replace-with-a-long-random-shared-secret
+```
+
+2. Start:
+
+```bash
+# Local defaults (music bind under ./data/library if MUSIC_HOST_PATH unset)
 docker compose -f docker-compose.local.yml up --build
 
-# Server profile (Navidrome + cookies host mounts)
+# Production-style compose (requires MUSIC_HOST_PATH)
 docker compose up --build
 ```
 
-3. Open your browser to:
+3. Open:
    - **UI**: http://localhost:8546
-   - **API**: http://localhost:8545
+   - **API** (loopback only): http://127.0.0.1:8545
 
-## Project Structure
+## Download modes
+
+| Mode | Behavior |
+|------|----------|
+| **One-off** | Enqueues `mode=oneOff`, polls that job, opens `/order?jobId=…` at `readyForReview`, then `POST /queue/jobs/{id}/save` |
+| **Queue** | Enqueues `mode=queue`, resets the home form immediately, stays on `/`. Worker uses source order, tags, saves, then requests scan |
+
+## Queue lifecycle
+
+```
+queued → downloading → readyForReview          # one-off (manual save)
+queued → downloading → finalizing → savedScanPending → completed  # queue auto-save
+failed / cancelled                             # terminal
+```
+
+- Startup recovers stale `downloading` / `finalizing` leases back to `queued` (scan-pending stays scan-pending).
+- Cancel stops queued jobs immediately and terminates an active yt-dlp process when possible.
+- Retry requeues `failed` / `cancelled` jobs; `savedScanPending` can retry scan without re-downloading.
+- Durable state lives at `${DATA_DIR}/queue.sqlite3` (WAL). Back up that file with `data/` if you care about in-flight history.
+
+## Shared library + scan handoff
+
+1. Mount the **same** host folder into VideoDL RW (`/music`) and dtp-tunes RO (`/music`).
+2. Configure a shared bearer token (`DTP_TUNES_INGEST_TOKEN`) in both stacks.
+3. After an atomic album save, VideoDL calls `POST ${DTP_TUNES_API_URL}/api/internal/scan`.
+4. If files saved but the scan call failed, the job stays `savedScanPending` and can be retried; the periodic dtp-tunes scanner remains a fallback.
+5. dtp-tunes skips hidden staging/backup directories (names starting with `.`) so coincident scans never index partial writes.
+
+## Project structure
 
 ```
 dtp-videodl/
-├── docker-compose.yml    # Docker Compose configuration
-├── api/                  # Python FastAPI backend
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── main.py          # API endpoints (download, finalize)
-├── ui/                   # Next.js frontend
-│   ├── Dockerfile
-│   ├── app/
-│   │   ├── page.js      # Step 1: Form with media URL
-│   │   ├── order/
-│   │   │   └── page.js  # Step 2: Reorder tracks
-│   │   └── api/         # Proxy routes to FastAPI
-│   └── package.json
-└── data/                 # Output directory (created automatically)
-    ├── jobs/            # Working directory for downloads
-    └── out/              # Final ZIP files
+├── docker-compose.yml / docker-compose.local.yml
+├── api/
+│   ├── main.py                 # REST + legacy endpoints
+│   └── app/
+│       ├── queue_store.py       # SQLite queue
+│       ├── queue_worker.py      # Bounded workers
+│       ├── download_service.py
+│       ├── library_service.py
+│       └── tunes_client.py
+├── ui/
+│   ├── app/page.js             # Home (one-off + queue)
+│   ├── app/order/              # One-off review / save
+│   ├── app/queue/              # Current Queue
+│   └── components/AppHeader.js
+└── data/                       # jobs/, out/, queue.sqlite3
 ```
 
-## Usage
+## Development / tests
 
-1. **Enter URL**: Paste a playlist or track URL (YouTube, SoundCloud, etc.)
-2. **Set Album Metadata**: Fill in album title, artist, year, and optionally upload cover art
-3. **Download**: Click "Fetch & Convert" — this downloads all tracks as MP3s
-4. **Reorder**: On the order page, drag tracks up/down or edit titles
-5. **Finalize**: Click "Finalize & Download ZIP" to get your tagged album
+```bash
+cd api && pip install -r requirements.txt httpx pytest
+DATA_DIR=/tmp/videodl-test pytest -q
+cd ../ui && npm ci && npm run lint && npm run build
+```
 
-## Technical Details
+## Security notes
 
-- **Backend**: FastAPI with `yt-dlp` for downloading and `mutagen` for MP3 tagging
-- **Frontend**: Next.js 16 with CSS Modules (no TypeScript, no Tailwind)
-- **Styling**: Netflix-style dark theme with hot pink accents
-- **Metadata**: ID3v2.3 tags for maximum compatibility
+- VideoDL has **no user authentication**. Keep it on loopback / private networks.
+- API port `8545` is bound to `127.0.0.1` only.
+- Do not expose filesystem paths or cookies through the browser APIs.
 
 ## Notes
 
-- All processing happens locally — no cloud uploads
+- All processing happens locally — no cloud uploads of your media
 - Ensure you have rights to download/convert the content
 - Site terms of service and copyright laws may prohibit downloading content
+- “Completed” means files were saved and a scan was accepted, not that every track is already searchable in DTP Tunes
