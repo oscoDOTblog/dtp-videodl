@@ -18,6 +18,8 @@ MAX_DOWNLOAD_WORKERS = max(0, int(os.environ.get("MAX_DOWNLOAD_WORKERS", "1")))
 LEASE_SECONDS = int(os.environ.get("QUEUE_LEASE_SECONDS", "600"))
 DTP_TUNES_API_URL = os.environ.get("DTP_TUNES_API_URL", "").rstrip("/")
 DTP_TUNES_INGEST_TOKEN = os.environ.get("DTP_TUNES_INGEST_TOKEN", "")
+MAX_LIBRARY_UPLOAD_FILES = max(1, int(os.environ.get("MAX_LIBRARY_UPLOAD_FILES", "50")))
+MAX_LIBRARY_UPLOAD_BYTES = max(1, int(os.environ.get("MAX_LIBRARY_UPLOAD_BYTES", str(200 * 1024 * 1024))))
 
 
 def ensure_dirs() -> None:

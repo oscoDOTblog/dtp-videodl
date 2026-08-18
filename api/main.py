@@ -14,7 +14,7 @@ from typing import List, Optional
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -22,9 +22,12 @@ from pydantic import BaseModel, Field
 from app import queue_store
 from app.download_service import build_yt_dlp_cmd, kill_process
 from app.library_service import (
+    ALLOWED_COVER_TYPES,
     LibraryError,
     cleanup_job_dir,
     create_zip,
+    ingest_uploaded_mp3s,
+    library_mount_status,
     prepare_tracks,
     save_cover_bytes,
     save_to_library,
@@ -34,9 +37,12 @@ from app.paths import (
     COOKIES_FILE,
     COOKIES_META_FILE,
     JOBS_DIR,
+    MAX_LIBRARY_UPLOAD_BYTES,
+    MAX_LIBRARY_UPLOAD_FILES,
     OUT_DIR,
     ensure_dirs,
 )
+from app.tunes_client import ScanRequestError, request_tunes_scan
 from app.queue_worker import save_one_off_job, start_workers
 from app.sanitize import sanitize
 
@@ -128,6 +134,20 @@ class LibraryFinalizeResp(BaseModel):
     count: int
 
 
+class LibraryStatusResp(BaseModel):
+    ready: bool
+    scanConfigured: bool
+
+
+class LibraryUploadResp(BaseModel):
+    ok: bool
+    count: int
+    artist: str
+    album: str
+    scanned: bool
+    scanError: Optional[str] = None
+
+
 class ProgressResp(BaseModel):
     job_id: str
     current: int
@@ -210,6 +230,20 @@ def _library_http(exc: LibraryError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
+async def _read_upload_limited(upload: UploadFile, max_bytes: int) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await upload.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail=f"file too large: {upload.filename or 'upload'}")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 # ---------------------------------------------------------------------------
 # Cookies / metadata (unchanged behavior)
 # ---------------------------------------------------------------------------
@@ -245,6 +279,74 @@ async def upload_cookies(file: UploadFile = File(...)):
         logger.error("Failed saving cookies file: %s", e)
         raise HTTPException(status_code=500, detail="failed to persist cookies file")
     return CookiesStatusResp(hasCookies=True, uploadedAt=uploaded_at)
+
+
+@app.get("/library/status", response_model=LibraryStatusResp)
+def library_status():
+    return LibraryStatusResp(**library_mount_status())
+
+
+@app.post("/library/upload", response_model=LibraryUploadResp)
+async def library_upload(
+    files: List[UploadFile] = File(...),
+    artist: str = Form(""),
+    album: str = Form(""),
+    year: str = Form(""),
+    cover: Optional[UploadFile] = File(None),
+):
+    if not files:
+        raise HTTPException(status_code=400, detail="at least one mp3 is required")
+    if len(files) > MAX_LIBRARY_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"too many files (max {MAX_LIBRARY_UPLOAD_FILES})",
+        )
+
+    uploads: list[tuple[str, bytes]] = []
+    for upload in files:
+        filename = Path(upload.filename or "").name
+        payload = await _read_upload_limited(upload, MAX_LIBRARY_UPLOAD_BYTES)
+        uploads.append((filename, payload))
+
+    cover_bytes = None
+    cover_mime = "image/jpeg"
+    if cover is not None and cover.filename:
+        cover_mime = (cover.content_type or "").lower() or "image/jpeg"
+        if cover_mime not in ALLOWED_COVER_TYPES:
+            raise HTTPException(status_code=400, detail="cover must be a jpeg or png image")
+        cover_bytes = await _read_upload_limited(cover, 8 * 1024 * 1024)
+        if not cover_bytes:
+            raise HTTPException(status_code=400, detail="cover image is empty")
+
+    try:
+        result = ingest_uploaded_mp3s(
+            uploads,
+            artist=artist or "",
+            album=album or "",
+            year=year or "",
+            cover_bytes=cover_bytes,
+            cover_mime=cover_mime,
+        )
+    except LibraryError as exc:
+        raise _library_http(exc) from exc
+
+    scanned = False
+    scan_error = None
+    try:
+        request_tunes_scan()
+        scanned = True
+    except ScanRequestError as exc:
+        logger.warning("Library upload saved but scan failed: %s", exc)
+        scan_error = str(exc)
+
+    return LibraryUploadResp(
+        ok=True,
+        count=result["count"],
+        artist=result["artist"],
+        album=result["album"],
+        scanned=scanned,
+        scanError=scan_error,
+    )
 
 
 @app.post("/metadata", response_model=MetadataResp)

@@ -1,0 +1,339 @@
+.container {
+  min-height: calc(100vh - 64px);
+  display: flex;
+  justify-content: center;
+  padding: 2rem 1.25rem 3rem;
+  background: var(--bg-primary);
+}
+
+.main {
+  width: 100%;
+  max-width: 760px;
+}
+
+.headerRow {
+  margin-bottom: 1.25rem;
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  margin-top: 0.4rem;
+  max-width: 42rem;
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  font-size: 0.8rem;
+}
+
+.pillDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.pillOn {
+  border-color: rgba(255, 20, 147, 0.45);
+  color: var(--text-primary);
+}
+
+.pillOn .pillDot {
+  background: var(--accent-pink);
+  box-shadow: 0 0 8px rgba(255, 20, 147, 0.7);
+}
+
+.pillOff {
+  color: var(--text-secondary);
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.dropzone {
+  border: 1px dashed rgba(255, 20, 147, 0.45);
+  border-radius: 8px;
+  padding: 1.5rem 1.25rem;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 20, 147, 0.04) 0 12px,
+      transparent 12px 24px
+    ),
+    var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dropzoneActive {
+  border-color: var(--accent-pink);
+  background: rgba(255, 20, 147, 0.12);
+}
+
+.dropCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--text-secondary);
+}
+
+.dropCopy strong {
+  color: var(--text-primary);
+  font-size: 1.05rem;
+}
+
+.fileButton,
+.fileInputLabel {
+  display: inline-block;
+  padding: 0.8rem 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-pink);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+}
+
+.fileButton input,
+.fileInputLabel input {
+  display: none;
+}
+
+.fileButton:hover,
+.fileInputLabel:hover {
+  background: rgba(255, 20, 147, 0.12);
+}
+
+.tracklist {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.trackHead,
+.track {
+  display: grid;
+  grid-template-columns: 2.2rem minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0.9rem;
+}
+
+.trackHead {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tracks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.track {
+  border-top: 1px solid var(--border-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.trackIndex {
+  color: var(--accent-pink);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.trackName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.trackSize {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.removeButton {
+  background: transparent;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.removeButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 7rem;
+  gap: 0.9rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-pink);
+  background: var(--bg-primary);
+}
+
+.imagePreview {
+  margin-top: 0.75rem;
+}
+
+.previewImage {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid var(--border-color);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.button,
+.secondaryButton {
+  padding: 0.95rem 1.5rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.button {
+  background: var(--accent-pink);
+  color: var(--text-primary);
+  border: none;
+}
+
+.button:hover {
+  background: var(--accent-pink-hover);
+}
+
+.button:disabled,
+.secondaryButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.error,
+.success {
+  padding: 0.85rem 1rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.success {
+  background: rgba(255, 20, 147, 0.12);
+  border: 1px solid rgba(255, 20, 147, 0.35);
+  color: var(--text-primary);
+}
+
+@media (max-width: 720px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .title {
+    font-size: 1.55rem;
+  }
+
+  .card {
+    padding: 1.1rem;
+  }
+
+  .fields {
+    grid-template-columns: 1fr;
+  }
+
+  .trackHead,
+  .track {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
+
+  .trackSize {
+    display: none;
+  }
+
+  .dropzone {
+    padding: 1.1rem;
+  }
+}

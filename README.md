@@ -8,6 +8,7 @@ Download playlists and tracks from YouTube, SoundCloud, and other yt-dlp-support
 - **One-off download**: Download with live progress → reorder/edit tracks → **Save to DTP Tunes**
 - **Queue mode**: Add jobs to a durable background queue; the worker tags, atomically saves, and requests a DTP Tunes library scan automatically
 - **Current Queue** page with progress, cancel, retry, and history cleanup
+- **Upload** page to drop existing MP3s into the mounted Navidrome / DTP Tunes library
 - Shared host music folder with dtp-tunes via `MUSIC_HOST_PATH`
 
 ## Requirements
@@ -69,6 +70,16 @@ failed / cancelled                             # terminal
 4. If files saved but the scan call failed, the job stays `savedScanPending` and can be retried; the periodic dtp-tunes scanner remains a fallback.
 5. dtp-tunes skips hidden staging/backup directories (names starting with `.`) so coincident scans never index partial writes.
 
+## Upload MP3s
+
+Open **Upload** in the header (`/upload`) to copy existing MP3s into the mounted library without going through yt-dlp.
+
+- Drop or choose `.mp3` files. Artist / album / year are optional; blank fields use ID3 tags, then `Unknown Artist` / `Unknown Album`.
+- Files are merged into `/music/<artist>/<album>/` (host: `$MUSIC_HOST_PATH/<artist>/<album>/`). Same-name tracks are replaced; other tracks in that album folder are kept.
+- Optional JPEG/PNG cover is embedded and written as `cover.jpg` / `cover.png`.
+- After a successful copy, VideoDL requests a DTP Tunes scan. If the scan call fails, the files are still on disk and the next periodic scan will pick them up.
+- Browser APIs do not return host filesystem paths.
+
 ## Project structure
 
 ```
@@ -86,6 +97,7 @@ dtp-videodl/
 │   ├── app/page.js             # Home (one-off + queue)
 │   ├── app/order/              # One-off review / save
 │   ├── app/queue/              # Current Queue
+│   ├── app/upload/             # Direct MP3 library intake
 │   └── components/AppHeader.js
 └── data/                       # jobs/, out/, queue.sqlite3
 ```

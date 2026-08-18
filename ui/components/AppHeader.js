@@ -48,6 +48,12 @@ export default function AppHeader() {
             Current Queue
             {activeCount > 0 && <span className={styles.badge}>{activeCount}</span>}
           </Link>
+          <Link
+            href="/upload"
+            className={pathname === "/upload" ? styles.active : undefined}
+          >
+            Upload
+          </Link>
         </nav>
       </div>
     </header>
