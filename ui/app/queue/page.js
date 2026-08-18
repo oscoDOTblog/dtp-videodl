@@ -54,13 +54,15 @@ export default function QueuePage() {
   }, []);
 
   const runAction = async (jobId, action) => {
-    setBusyId(jobId || "clear");
+    setBusyId(jobId || action);
     try {
       let response;
       if (action === "remove") {
         response = await fetch(`/api/queue/jobs/${jobId}`, { method: "DELETE" });
       } else if (action === "clear") {
         response = await fetch("/api/queue/jobs", { method: "DELETE" });
+      } else if (action === "clearAll") {
+        response = await fetch("/api/queue/jobs/clear", { method: "POST" });
       } else {
         response = await fetch(`/api/queue/jobs/${jobId}/${action}`, {
           method: "POST",
@@ -97,13 +99,31 @@ export default function QueuePage() {
             <Link href="/" className={styles.linkButton}>
               New download
             </Link>
-            {hasTerminal && (
+            {hasTerminal && hasActive && (
               <button
                 className={styles.dangerButton}
                 disabled={busyId !== null}
                 onClick={() => runAction(null, "clear")}
               >
                 Clear finished
+              </button>
+            )}
+            {jobs.length > 0 && (
+              <button
+                className={styles.dangerButton}
+                disabled={busyId !== null}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "Clear all jobs from the queue? In-progress downloads will be cancelled."
+                    )
+                  ) {
+                    return;
+                  }
+                  runAction(null, "clearAll");
+                }}
+              >
+                {busyId === "clearAll" ? "Clearing…" : "Clear queue"}
               </button>
             )}
           </div>
@@ -122,7 +142,7 @@ export default function QueuePage() {
           {jobs.map((job) => {
             const progress =
               job.total > 0 ? Math.min(100, Math.round((job.current / job.total) * 100)) : 0;
-            const busy = busyId === job.id;
+            const busy = busyId !== null;
             return (
               <article key={job.id} className={styles.card}>
                 <div className={styles.cardTop}>

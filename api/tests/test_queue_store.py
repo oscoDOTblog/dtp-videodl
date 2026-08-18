@@ -108,6 +108,29 @@ def test_public_job_hides_paths(tmp_path):
     assert public["hasCover"] is True
 
 
+def test_clear_all_removes_active_and_terminal(tmp_path):
+    db = tmp_path / "queue.sqlite3"
+    queued = queue_store.create_job(
+        mode="queue",
+        playlist_url="https://example.com/x",
+        use_cookies=False,
+        album={"title": "Queued", "artist": "A", "year": ""},
+        db_path=db,
+    )
+    done = queue_store.create_job(
+        mode="queue",
+        playlist_url="https://example.com/y",
+        use_cookies=False,
+        album={"title": "Done", "artist": "A", "year": ""},
+        db_path=db,
+    )
+    queue_store.update_job(done["id"], db_path=db, status="completed")
+    removed = queue_store.clear_all(db_path=db)
+    assert set(removed) == {queued["id"], done["id"]}
+    assert queue_store.list_jobs(db_path=db) == []
+    assert queue_store.is_cancel_requested(queued["id"], db_path=db) is True
+
+
 def test_delete_only_terminal(tmp_path):
     db = tmp_path / "queue.sqlite3"
     job = queue_store.create_job(

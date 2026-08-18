@@ -409,6 +409,17 @@ def clear_finished_jobs():
     return {"ok": True, "removed": removed}
 
 
+@app.post("/queue/jobs/clear")
+def clear_queue_jobs():
+    jobs = queue_store.list_jobs()
+    for job in jobs:
+        kill_process(job["id"])
+    removed_ids = queue_store.clear_all()
+    for job_id in removed_ids:
+        cleanup_job_dir(job_id)
+    return {"ok": True, "removed": len(removed_ids)}
+
+
 # ---------------------------------------------------------------------------
 # Legacy endpoints (kept for compatibility; UI should use /queue/*)
 # ---------------------------------------------------------------------------

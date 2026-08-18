@@ -123,6 +123,40 @@ def test_cancel_queued(client):
     assert response.json()["status"] == "cancelled"
 
 
+def test_clear_queue_removes_all_jobs(client):
+    test_client, _db = client
+    test_client.post(
+        "/queue/jobs",
+        json={
+            "mode": "queue",
+            "playlistUrl": "https://example.com/one",
+            "useCookies": False,
+            "album": {"title": "One", "artist": "A", "year": ""},
+        },
+    )
+    second = test_client.post(
+        "/queue/jobs",
+        json={
+            "mode": "oneOff",
+            "playlistUrl": "https://example.com/two",
+            "useCookies": False,
+            "album": {"title": "Two", "artist": "B", "year": ""},
+        },
+    ).json()
+    test_client.post(f"/queue/jobs/{second['id']}/cancel")
+
+    response = test_client.post("/queue/jobs/clear")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["removed"] == 2
+
+    listed = test_client.get("/queue/jobs")
+    assert listed.status_code == 200
+    assert listed.json()["jobs"] == []
+    assert listed.json()["activeCount"] == 0
+
+
 def test_delete_non_terminal_rejected(client):
     test_client, _db = client
     created = test_client.post(

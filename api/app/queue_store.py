@@ -377,6 +377,18 @@ def clear_terminal(db_path: Path | None = None) -> int:
             return cur.rowcount
 
 
+def clear_all(db_path: Path | None = None) -> list[str]:
+    """Delete every job. Returns removed ids so callers can clean job dirs."""
+    init_db(db_path)
+    with _lock:
+        with _db(db_path) as conn:
+            rows = conn.execute("SELECT id FROM jobs").fetchall()
+            ids = [row["id"] for row in rows]
+            if ids:
+                conn.execute("DELETE FROM jobs")
+            return ids
+
+
 def recover_stale_leases(db_path: Path | None = None) -> int:
     """On startup, put in-flight jobs back into queued (or keep savedScanPending)."""
     init_db(db_path)
@@ -402,7 +414,8 @@ def recover_stale_leases(db_path: Path | None = None) -> int:
 
 def is_cancel_requested(job_id: str, db_path: Path | None = None) -> bool:
     job = get_job(job_id, db_path=db_path)
-    return bool(job and job.get("cancelRequested"))
+    # Missing jobs (cleared from the queue) should stop in-flight workers.
+    return job is None or bool(job.get("cancelRequested"))
 
 
 def public_job(job: dict[str, Any] | None) -> dict[str, Any] | None:
