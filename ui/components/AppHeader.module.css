@@ -67,3 +67,18 @@
   align-items: center;
   justify-content: center;
 }
+
+.logout {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.logout:hover {
+  color: var(--text-primary);
+  border-color: var(--accent, #ff1493);
+}

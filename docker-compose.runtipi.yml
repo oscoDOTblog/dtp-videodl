@@ -1,0 +1,52 @@
+# Production overlay: attach the VideoDL gateway to Runtipi's Traefik network
+# and expose it on a public custom domain with Let's Encrypt.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.runtipi.yml up -d --build
+#
+# Requires in .env:
+#   VIDEODL_DOMAIN=videodl.example.com
+#   SITE_PASSWORD=your-secure-password
+#
+# Prerequisites:
+#   - Runtipi running (owns host ports 80/443)
+#   - DNS A record for VIDEODL_DOMAIN → public IP
+#   - Docker network runtipi_tipi_main_network exists
+#   - See docs/RUNTIPI_DEPLOYMENT.md
+
+services:
+  gateway:
+    networks:
+      - default
+      - runtipi
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=runtipi_tipi_main_network
+      - traefik.http.middlewares.videodl-https-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.videodl-https-redirect.redirectscheme.permanent=true
+      - traefik.http.services.videodl.loadbalancer.server.port=80
+      - traefik.http.services.videodl.loadbalancer.passhostheader=true
+      # HTTP → HTTPS
+      - traefik.http.routers.videodl-http.rule=Host(`${VIDEODL_DOMAIN}`)
+      - traefik.http.routers.videodl-http.entrypoints=web
+      - traefik.http.routers.videodl-http.middlewares=videodl-https-redirect
+      - traefik.http.routers.videodl-http.service=videodl
+      # HTTPS (Let's Encrypt via Runtipi's myresolver)
+      - traefik.http.routers.videodl.rule=Host(`${VIDEODL_DOMAIN}`)
+      - traefik.http.routers.videodl.entrypoints=websecure
+      - traefik.http.routers.videodl.tls=true
+      - traefik.http.routers.videodl.tls.certresolver=myresolver
+      - traefik.http.routers.videodl.service=videodl
+
+  api:
+    environment:
+      CORS_ORIGINS: https://${VIDEODL_DOMAIN}
+
+  web:
+    environment:
+      NEXT_PUBLIC_API_BASE_EXTERNAL: https://${VIDEODL_DOMAIN}
+
+networks:
+  runtipi:
+    external: true
+    name: runtipi_tipi_main_network

@@ -1,5 +1,6 @@
 import "./globals.css";
-import AppHeader from "../components/AppHeader";
+import AuthWrapper from "../components/AuthWrapper";
+import AppShell from "../components/AppShell";
 
 export const metadata = {
   title: "VideoDL",
@@ -10,8 +11,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <AppHeader />
-        {children}
+        <AuthWrapper>
+          <AppShell>{children}</AppShell>
+        </AuthWrapper>
       </body>
     </html>
   );

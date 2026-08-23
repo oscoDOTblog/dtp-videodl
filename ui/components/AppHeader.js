@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import styles from "./AppHeader.module.css";
 
-export default function AppHeader() {
+export default function AppHeader({ onLogout }) {
   const pathname = usePathname();
   const [activeCount, setActiveCount] = useState(0);
 
@@ -54,6 +54,11 @@ export default function AppHeader() {
           >
             Upload
           </Link>
+          {onLogout && (
+            <button type="button" className={styles.logout} onClick={onLogout}>
+              Sign out
+            </button>
+          )}
         </nav>
       </div>
     </header>

@@ -39,8 +39,41 @@ docker compose up --build
 ```
 
 3. Open:
-   - **UI**: http://localhost:8546
-   - **API** (loopback only): http://127.0.0.1:8545
+   - **Local dev**: http://localhost:8546 (direct web port; no password unless `SITE_PASSWORD` is set)
+   - **Production gateway** (loopback): http://127.0.0.1:8547
+   - **API** (loopback only, cookie sync): http://127.0.0.1:8545
+
+## Public hostname (Runtipi / Traefik)
+
+To expose VideoDL on a custom domain like dtp-tunes (e.g. `videodl.waifu.bond`):
+
+1. Set in `.env`:
+
+```bash
+VIDEODL_DOMAIN=videodl.example.com
+SITE_PASSWORD=your-secure-password
+```
+
+2. Create a DNS **A record** for `VIDEODL_DOMAIN` → your public IP.
+
+3. Start with the Runtipi overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.runtipi.yml up -d --build
+```
+
+4. Open `https://videodl.example.com` — sign in with `SITE_PASSWORD`.
+
+See [`docs/RUNTIPI_DEPLOYMENT.md`](docs/RUNTIPI_DEPLOYMENT.md) for full DNS, Traefik, and troubleshooting steps.
+
+## Password protection
+
+When `SITE_PASSWORD` is set in `.env`, the Next.js UI shows a login screen (same
+pattern as sway-drive). Leave it empty for local dev with no gate.
+
+- Auth is UI-only (`localStorage` flag after `POST /api/auth`)
+- The FastAPI API on loopback (`127.0.0.1:8545`) is separate — used by dtp-os cookie sync
+- Rebuild/restart the `web` service after changing `SITE_PASSWORD`
 
 ## YouTube cookies (local)
 
@@ -94,7 +127,9 @@ Open **Upload** in the header (`/upload`) to copy existing MP3s into the mounted
 
 ```
 dtp-videodl/
-├── docker-compose.yml / docker-compose.local.yml
+├── docker-compose.yml / docker-compose.local.yml / docker-compose.runtipi.yml
+├── gateway/nginx.conf          # nginx reverse proxy (production)
+├── docs/RUNTIPI_DEPLOYMENT.md  # custom domain + Traefik runbook
 ├── api/
 │   ├── main.py                 # REST + legacy endpoints
 │   └── app/
@@ -122,8 +157,10 @@ cd ../ui && npm ci && npm run lint && npm run build
 
 ## Security notes
 
-- VideoDL has **no user authentication**. Keep it on loopback / private networks.
-- API port `8545` is bound to `127.0.0.1` only.
+- VideoDL has **no user authentication** on the FastAPI loopback API (`127.0.0.1:8545`).
+- Set `SITE_PASSWORD` before exposing the web UI on a public hostname.
+- Keep the API port loopback-only; do not forward 8545 on your router.
+- API port `8545` and gateway diagnostic port `8547` are bound to `127.0.0.1` only.
 - Do not expose filesystem paths or cookies through the browser APIs.
 - The dtp-os VideoDL Cookies tool may POST a Netscape cookie file to the loopback API only (`http://127.0.0.1` / `http://localhost`).
 
