@@ -464,7 +464,7 @@ export default function Home() {
                   Cookies (optional)
                 </label>
                 <p className={styles.fileName}>
-                  For age-restricted or login-required content on supported sites (e.g. YouTube)
+                  For age-restricted or login-required content on supported sites (e.g. YouTube). Local Chrome: sync from the dtp-os VideoDL Cookies tool instead of exporting cookies.txt.
                 </p>
                 <label className={styles.fileInputLabel} htmlFor="cookiesUpload">
                   {cookiesLoading ? "Uploading..." : "Upload Cookies"}

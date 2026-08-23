@@ -42,6 +42,16 @@ docker compose up --build
    - **UI**: http://localhost:8546
    - **API** (loopback only): http://127.0.0.1:8545
 
+## YouTube cookies (local)
+
+yt-dlp uses `./data/cookies/youtube.cookies.txt` when that file exists (`COOKIES_DIR`).
+
+**Recommended (local Chrome):** open the dtp-os toolbar → **VideoDL Cookies** → **Sync now**. Stay signed in to YouTube in that Chrome profile. Optional auto-sync every 6 hours. The extension POSTs a Netscape cookie file to `http://127.0.0.1:8545/cookies/upload` — cookies never go through the Next.js UI.
+
+**Manual:** export a Netscape `cookies.txt` and upload it on the home page.
+
+VideoDL must be running for a sync to land. YouTube bot-checks can still fail even with fresh cookies.
+
 ## Download modes
 
 | Mode | Behavior |
@@ -115,6 +125,7 @@ cd ../ui && npm ci && npm run lint && npm run build
 - VideoDL has **no user authentication**. Keep it on loopback / private networks.
 - API port `8545` is bound to `127.0.0.1` only.
 - Do not expose filesystem paths or cookies through the browser APIs.
+- The dtp-os VideoDL Cookies tool may POST a Netscape cookie file to the loopback API only (`http://127.0.0.1` / `http://localhost`).
 
 ## Notes
 
