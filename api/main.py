@@ -485,19 +485,8 @@ def retry_queue_job(job_id: str):
     job = queue_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] not in queue_store.RETRYABLE_STATUSES and job["status"] != "savedScanPending":
+    if job["status"] not in queue_store.RETRYABLE_STATUSES:
         raise HTTPException(status_code=409, detail="Job cannot be retried")
-    if job["status"] == "savedScanPending":
-        # Re-queue scan attempt without re-download.
-        updated = queue_store.update_job(
-            job_id,
-            status="savedScanPending",
-            cancelRequested=False,
-            leaseOwner=None,
-            leaseExpiresAt=None,
-            error=None,
-        )
-        return queue_store.public_job(updated)
     updated = queue_store.retry_job(job_id)
     return queue_store.public_job(updated)
 
@@ -553,7 +542,7 @@ def get_download_result(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] == "failed":
         raise HTTPException(status_code=500, detail=f"Download failed: {job.get('error') or 'Unknown error'}")
-    if job["status"] not in {"readyForReview", "completed", "finalizing", "savedScanPending"}:
+    if job["status"] not in {"readyForReview", "completed", "finalizing"}:
         raise HTTPException(status_code=202, detail="Job still in progress")
     tracks_data = (job.get("manifest") or {}).get("tracks") or []
     tracks = [TrackIn(**t) for t in tracks_data]

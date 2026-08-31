@@ -10,15 +10,12 @@ const ACTIVE = new Set([
   "downloading",
   "finalizing",
   "readyForReview",
-  "savedScanPending",
 ]);
 
 function statusLabel(status) {
   switch (status) {
     case "readyForReview":
       return "Ready for review";
-    case "savedScanPending":
-      return "Saved · scan pending";
     default:
       return status;
   }
@@ -191,8 +188,7 @@ export default function QueuePage() {
                   )}
                   {(job.status === "queued" ||
                     job.status === "downloading" ||
-                    job.status === "finalizing" ||
-                    job.status === "savedScanPending") && (
+                    job.status === "finalizing") && (
                     <button
                       className={styles.secondaryButton}
                       disabled={busy}
@@ -201,15 +197,13 @@ export default function QueuePage() {
                       {busy ? "…" : "Cancel"}
                     </button>
                   )}
-                  {(job.status === "failed" ||
-                    job.status === "cancelled" ||
-                    job.status === "savedScanPending") && (
+                  {(job.status === "failed" || job.status === "cancelled") && (
                     <button
                       className={styles.secondaryButton}
                       disabled={busy}
                       onClick={() => runAction(job.id, "retry")}
                     >
-                      {busy ? "…" : job.status === "savedScanPending" ? "Retry scan" : "Retry"}
+                      {busy ? "…" : "Retry"}
                     </button>
                   )}
                   {TERMINAL.has(job.status) && (

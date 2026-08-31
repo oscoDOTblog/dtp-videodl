@@ -16,10 +16,8 @@ from app.paths import LEASE_SECONDS
 
 
 TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
-ACTIVE_STATUSES = frozenset(
-    {"queued", "downloading", "finalizing", "readyForReview", "savedScanPending"}
-)
-CANCELABLE_STATUSES = frozenset({"queued", "downloading", "finalizing", "savedScanPending"})
+ACTIVE_STATUSES = frozenset({"queued", "downloading", "finalizing", "readyForReview"})
+CANCELABLE_STATUSES = frozenset({"queued", "downloading", "finalizing"})
 RETRYABLE_STATUSES = frozenset({"failed", "cancelled"})
 
 _lock = threading.Lock()
@@ -248,7 +246,7 @@ def lease_next_job(owner: str, db_path: Path | None = None, *, lease_seconds: in
                 SELECT * FROM jobs
                 WHERE status = 'queued'
                    OR (
-                        status IN ('downloading', 'finalizing', 'savedScanPending')
+                        status IN ('downloading', 'finalizing')
                         AND (lease_expires_at IS NULL OR lease_expires_at < ?)
                         AND cancel_requested = 0
                    )
@@ -262,9 +260,7 @@ def lease_next_job(owner: str, db_path: Path | None = None, *, lease_seconds: in
             job_id = row["id"]
             status = row["status"]
             next_status = "downloading" if status in {"queued", "downloading"} else status
-            if status == "savedScanPending":
-                next_status = "savedScanPending"
-            elif status == "finalizing":
+            if status == "finalizing":
                 next_status = "finalizing"
             elif row["mode"] == "queue" and status == "queued":
                 next_status = "downloading"
@@ -390,22 +386,32 @@ def clear_all(db_path: Path | None = None) -> list[str]:
 
 
 def recover_stale_leases(db_path: Path | None = None) -> int:
-    """On startup, put in-flight jobs back into queued (or keep savedScanPending)."""
+    """On startup, put in-flight jobs back into queued and finish legacy scan-pending jobs."""
     init_db(db_path)
     now = _utcnow()
     with _lock:
         with _db(db_path) as conn:
-            cur = conn.execute(
+            conn.execute(
                 """
                 UPDATE jobs
-                SET status = CASE
-                        WHEN status = 'savedScanPending' THEN 'savedScanPending'
-                        ELSE 'queued'
-                    END,
+                SET status = 'completed',
+                    finished_at = COALESCE(finished_at, updated_at),
+                    error = NULL,
                     lease_owner = NULL,
                     lease_expires_at = NULL,
                     updated_at = ?
-                WHERE status IN ('downloading', 'finalizing', 'savedScanPending')
+                WHERE status = 'savedScanPending'
+                """,
+                (now,),
+            )
+            cur = conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'queued',
+                    lease_owner = NULL,
+                    lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE status IN ('downloading', 'finalizing')
                 """,
                 (now,),
             )

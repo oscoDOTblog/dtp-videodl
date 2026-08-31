@@ -92,14 +92,7 @@ export default function OrderPage() {
       }
       const data = await response.json();
       setJob(data.job);
-      setSuccessMessage(
-        `Saved ${data.count || tracks.length} tracks to DTP Tunes` +
-          (data.job?.status === "savedScanPending"
-            ? " (scan pending)"
-            : data.job?.status === "completed"
-              ? " and requested library scan"
-              : "")
-      );
+      setSuccessMessage(`Saved ${data.count || tracks.length} tracks to DTP Tunes`);
     } catch (err) {
       setError(err.message || "Failed to save to DTP Tunes");
     } finally {

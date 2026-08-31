@@ -14,7 +14,6 @@ from app import queue_store
 from app.download_service import DownloadCancelled, DownloadFailed, kill_process, run_download
 from app.library_service import LibraryError, cleanup_job_dir, prepare_tracks, save_to_library
 from app.paths import MAX_DOWNLOAD_WORKERS
-from app.tunes_client import ScanRequestError, request_tunes_scan
 
 logger = logging.getLogger("videodl.worker")
 
@@ -75,11 +74,6 @@ def _process_job(job: dict, owner: str) -> None:
 
     if job.get("cancelRequested"):
         queue_store.mark_cancelled(job_id, db_path=_db_path)
-        return
-
-    # Scan-only retry path for albums already written to disk.
-    if job["status"] == "savedScanPending":
-        _request_scan(job_id)
         return
 
     if job["status"] == "finalizing":
@@ -161,6 +155,21 @@ def _process_job(job: dict, owner: str) -> None:
     _finalize_queue_job(refreshed, owner)
 
 
+def _mark_completed(job_id: str, *, library_path: str | None = None, manifest: dict | None = None) -> None:
+    fields: dict = {
+        "status": "completed",
+        "finishedAt": _utcnow(),
+        "leaseOwner": None,
+        "leaseExpiresAt": None,
+        "error": None,
+    }
+    if library_path is not None:
+        fields["libraryPath"] = library_path
+    if manifest is not None:
+        fields["manifest"] = manifest
+    queue_store.update_job(job_id, db_path=_db_path, **fields)
+
+
 def _finalize_queue_job(job: dict, owner: str) -> None:
     job_id = job["id"]
     if queue_store.is_cancel_requested(job_id, db_path=_db_path):
@@ -194,13 +203,7 @@ def _finalize_queue_job(job: dict, owner: str) -> None:
             prepared,
         )
         cleanup_job_dir(job_id)
-        queue_store.update_job(
-            job_id,
-            db_path=_db_path,
-            status="savedScanPending",
-            libraryPath=str(library_dir),
-            error=None,
-        )
+        _mark_completed(job_id, library_path=str(library_dir))
     except LibraryError as exc:
         queue_store.update_job(
             job_id,
@@ -211,7 +214,6 @@ def _finalize_queue_job(job: dict, owner: str) -> None:
             leaseOwner=None,
             leaseExpiresAt=None,
         )
-        return
     except Exception as exc:  # noqa: BLE001
         logger.exception("Finalize failed for %s", job_id)
         queue_store.update_job(
@@ -223,37 +225,10 @@ def _finalize_queue_job(job: dict, owner: str) -> None:
             leaseOwner=None,
             leaseExpiresAt=None,
         )
-        return
-
-    _request_scan(job_id)
-
-
-def _request_scan(job_id: str) -> None:
-    try:
-        request_tunes_scan()
-        queue_store.update_job(
-            job_id,
-            db_path=_db_path,
-            status="completed",
-            finishedAt=_utcnow(),
-            leaseOwner=None,
-            leaseExpiresAt=None,
-            error=None,
-        )
-    except ScanRequestError as exc:
-        logger.warning("Scan request pending for %s: %s", job_id, exc)
-        queue_store.update_job(
-            job_id,
-            db_path=_db_path,
-            status="savedScanPending",
-            error=f"Saved, waiting for scan: {exc}"[:2000],
-            leaseOwner=None,
-            leaseExpiresAt=None,
-        )
 
 
 def save_one_off_job(job_id: str, ordered_tracks: list[dict]) -> dict:
-    """Tag + save a readyForReview one-off job, then request scan."""
+    """Tag + save a readyForReview one-off job."""
     job = queue_store.get_job(job_id, db_path=_db_path)
     if not job:
         raise LibraryError("Job not found", status_code=404)
@@ -285,18 +260,15 @@ def save_one_off_job(job_id: str, ordered_tracks: list[dict]) -> dict:
             prepared,
         )
         cleanup_job_dir(job_id)
-        queue_store.update_job(
+        _mark_completed(
             job_id,
-            db_path=_db_path,
-            status="savedScanPending",
-            libraryPath=str(library_dir),
+            library_path=str(library_dir),
             manifest={"tracks": resolved},
         )
     except LibraryError:
         queue_store.update_job(job_id, db_path=_db_path, status="readyForReview")
         raise
 
-    _request_scan(job_id)
     refreshed = queue_store.get_job(job_id, db_path=_db_path)
     assert refreshed is not None
     return refreshed

@@ -6,7 +6,7 @@ Download playlists and tracks from YouTube, SoundCloud, and other yt-dlp-support
 
 - **Load metadata**: Paste a playlist/track URL and review/edit album metadata and cover art
 - **One-off download**: Download with live progress → reorder/edit tracks → **Save to DTP Tunes**
-- **Queue mode**: Add jobs to a durable background queue; the worker tags, atomically saves, and requests a DTP Tunes library scan automatically
+- **Queue mode**: Add jobs to a durable background queue; the worker tags and atomically saves into DTP Tunes
 - **Current Queue** page with progress, cancel, retry, and history cleanup
 - **Upload** page to drop existing MP3s into the mounted Navidrome / DTP Tunes library
 - Shared host music folder with dtp-tunes via `MUSIC_HOST_PATH`
@@ -90,28 +90,25 @@ VideoDL must be running for a sync to land. YouTube bot-checks can still fail ev
 | Mode | Behavior |
 |------|----------|
 | **One-off** | Enqueues `mode=oneOff`, polls that job, opens `/order?jobId=…` at `readyForReview`, then `POST /queue/jobs/{id}/save` |
-| **Queue** | Enqueues `mode=queue`, resets the home form immediately, stays on `/`. Worker uses source order, tags, saves, then requests scan |
+| **Queue** | Enqueues `mode=queue`, resets the home form immediately, stays on `/`. Worker uses source order, tags, and saves |
 
 ## Queue lifecycle
 
 ```
 queued → downloading → readyForReview          # one-off (manual save)
-queued → downloading → finalizing → savedScanPending → completed  # queue auto-save
+queued → downloading → finalizing → completed  # queue auto-save
 failed / cancelled                             # terminal
 ```
 
-- Startup recovers stale `downloading` / `finalizing` leases back to `queued` (scan-pending stays scan-pending).
+- Startup recovers stale `downloading` / `finalizing` leases back to `queued`.
 - Cancel stops queued jobs immediately and terminates an active yt-dlp process when possible.
-- Retry requeues `failed` / `cancelled` jobs; `savedScanPending` can retry scan without re-downloading.
+- Retry requeues `failed` / `cancelled` jobs.
 - Durable state lives at `${DATA_DIR}/queue.sqlite3` (WAL). Back up that file with `data/` if you care about in-flight history.
 
-## Shared library + scan handoff
+## Shared library
 
 1. Mount the **same** host folder into VideoDL RW (`/music`) and dtp-tunes RO (`/music`).
-2. Configure a shared bearer token (`DTP_TUNES_INGEST_TOKEN`) in both stacks.
-3. After an atomic album save, VideoDL calls `POST ${DTP_TUNES_API_URL}/api/internal/scan`.
-4. If files saved but the scan call failed, the job stays `savedScanPending` and can be retried; the periodic dtp-tunes scanner remains a fallback.
-5. dtp-tunes skips hidden staging/backup directories (names starting with `.`) so coincident scans never index partial writes.
+2. dtp-tunes skips hidden staging/backup directories (names starting with `.`) so coincident scans never index partial writes.
 
 ## Upload MP3s
 
@@ -169,4 +166,4 @@ cd ../ui && npm ci && npm run lint && npm run build
 - All processing happens locally — no cloud uploads of your media
 - Ensure you have rights to download/convert the content
 - Site terms of service and copyright laws may prohibit downloading content
-- “Completed” means files were saved and a scan was accepted, not that every track is already searchable in DTP Tunes
+- “Completed” means files were saved to the library folder; dtp-tunes will pick them up on its next scan

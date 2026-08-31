@@ -92,8 +92,7 @@
 }
 
 .status_downloading,
-.status_finalizing,
-.status_savedScanPending {
+.status_finalizing {
   background: rgba(59, 130, 246, 0.15);
   color: #93c5fd;
 }
