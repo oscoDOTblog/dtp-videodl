@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
+const ACTIVE_ONE_OFF_JOB_KEY = "videodl-active-one-off-job";
+
 export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [useCookies, setUseCookies] = useState(false);
@@ -26,6 +28,22 @@ export default function Home() {
   const [progress, setProgress] = useState({ current: 0, total: 0, status: "", currentTitle: "" });
   const progressIntervalRef = useRef(null);
   const router = useRouter();
+
+  const rememberActiveOneOffJob = (jobId) => {
+    try {
+      sessionStorage.setItem(ACTIVE_ONE_OFF_JOB_KEY, jobId);
+    } catch {
+      // The download still works when browser storage is unavailable.
+    }
+  };
+
+  const forgetActiveOneOffJob = () => {
+    try {
+      sessionStorage.removeItem(ACTIVE_ONE_OFF_JOB_KEY);
+    } catch {
+      // Nothing else to clean up when browser storage is unavailable.
+    }
+  };
 
   const formatUploadedAt = (value) => {
     if (!value) return "";
@@ -189,7 +207,15 @@ export default function Home() {
   const pollQueueJob = async (jobId) => {
     try {
       const response = await fetch(`/api/queue/jobs/${jobId}`);
-      if (!response.ok) return false;
+      if (!response.ok) {
+        if (response.status === 404) {
+          forgetActiveOneOffJob();
+          setLoading(false);
+          setError("The active download could not be found.");
+          return true;
+        }
+        return false;
+      }
       const job = await response.json();
       setProgress({
         current: job.current || 0,
@@ -199,6 +225,7 @@ export default function Home() {
       });
 
       if (job.status === "readyForReview") {
+        forgetActiveOneOffJob();
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
           progressIntervalRef.current = null;
@@ -212,6 +239,7 @@ export default function Home() {
       }
 
       if (job.status === "failed" || job.status === "cancelled") {
+        forgetActiveOneOffJob();
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
           progressIntervalRef.current = null;
@@ -222,6 +250,17 @@ export default function Home() {
           body: job.error || `Job ${job.status}`,
           tag: "download-error",
         });
+        return true;
+      }
+
+      if (job.status === "completed") {
+        forgetActiveOneOffJob();
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+        setLoading(false);
+        setQueueMessage("Download was already saved to the library.");
         return true;
       }
     } catch (err) {
@@ -240,6 +279,7 @@ export default function Home() {
     try {
       const job = await enqueueJob("oneOff");
       const jobId = job.id;
+      rememberActiveOneOffJob(jobId);
       progressIntervalRef.current = setInterval(async () => {
         await pollQueueJob(jobId);
       }, 1000);
@@ -292,6 +332,35 @@ export default function Home() {
 
   useEffect(() => {
     loadCookiesStatus();
+  }, []);
+
+  // A one-off job is durable in the API. Resume following it if the page is
+  // reloaded or remounted while the download is still running.
+  useEffect(() => {
+    let jobId = "";
+    try {
+      jobId = sessionStorage.getItem(ACTIVE_ONE_OFF_JOB_KEY) || "";
+    } catch {
+      return;
+    }
+    if (!jobId) return;
+
+    setLoading(true);
+    setProgress({ current: 0, total: 0, status: "reconnecting", currentTitle: "" });
+    progressIntervalRef.current = setInterval(async () => {
+      await pollQueueJob(jobId);
+    }, 1000);
+    pollQueueJob(jobId);
+
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+    };
+    // Recovery intentionally runs only once per mount. Re-running it when the
+    // render-local polling function changes would create duplicate intervals.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Show browser notification
@@ -660,4 +729,3 @@ export default function Home() {
     </div>
   );
 }
-
