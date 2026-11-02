@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import BatchDownload from "../components/BatchDownload";
 import styles from "./page.module.css";
 
 const ACTIVE_ONE_OFF_JOB_KEY = "videodl-active-one-off-job";
 
 export default function Home() {
+  const [mode, setMode] = useState("single");
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [useCookies, setUseCookies] = useState(false);
   const [downloadEntirePlaylist, setDownloadEntirePlaylist] = useState(true);
@@ -504,6 +506,26 @@ export default function Home() {
           Download playlists and tracks from YouTube, SoundCloud, and other supported sites as tagged MP3 albums
         </p>
 
+        <div className={styles.tabs}>
+          <button
+            type="button"
+            className={`${styles.tabButton} ${mode === "single" ? styles.tabButtonActive : ""}`}
+            onClick={() => setMode("single")}
+          >
+            Single download
+          </button>
+          <button
+            type="button"
+            className={`${styles.tabButton} ${mode === "queue" ? styles.tabButtonActive : ""}`}
+            onClick={() => setMode("queue")}
+          >
+            Queue download
+          </button>
+        </div>
+
+        {mode === "queue" ? (
+          <BatchDownload useCookies={useCookies} onUseCookiesChange={setUseCookies} />
+        ) : (
         <form onSubmit={onSubmit} className={styles.form}>
           {!detailsVisible && (
             <>
@@ -759,6 +781,7 @@ export default function Home() {
             </div>
           )}
         </form>
+        )}
       </main>
     </div>
   );

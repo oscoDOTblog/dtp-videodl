@@ -93,9 +93,15 @@ export default function OrderPage() {
       const blob = await response.blob();
       const disposition = response.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
-      const fallbackName = `${job.album?.artist || "Unknown artist"} - ${
-        job.album?.title || "Untitled"
-      }.zip`;
+      const contentType = response.headers.get("Content-Type") || "";
+      const isAudio = contentType.includes("audio") || contentType.includes("mpeg");
+      const fallbackName = isAudio
+        ? tracks.length === 1
+          ? `${tracks[0].title || "track"}.mp3`
+          : "track.mp3"
+        : `${job.album?.artist || "Unknown artist"} - ${
+            job.album?.title || "Untitled"
+          }.zip`;
       const filename = match
         ? decodeURIComponent(match[1].replace(/^"|"$/g, ""))
         : fallbackName;
@@ -107,7 +113,11 @@ export default function OrderPage() {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-      setSuccessMessage(`Downloaded ${tracks.length} tracks as MP3`);
+      setSuccessMessage(
+        tracks.length === 1
+          ? "Downloaded 1 track as MP3"
+          : `Downloaded ${tracks.length} tracks as MP3`
+      );
     } catch (err) {
       setError(err.message || "Failed to download MP3");
     } finally {

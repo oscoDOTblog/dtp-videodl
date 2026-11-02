@@ -525,12 +525,70 @@ def zip_queue_job(job_id: str, req: QueueSaveReq):
 
     album_title = sanitize((job["album"] or {}).get("title") or "album")
     album_artist = sanitize((job["album"] or {}).get("artist") or "")
+    return _serve_files_as_download(tracks, album_artist, album_title)
     zip_path = create_zip(album_artist, album_title, tracks)
     download_name = (
         f"{album_artist} - {album_title}.zip" if album_artist else f"{album_title}.zip"
     )
     return FileResponse(
         path=zip_path, filename=download_name, media_type="application/zip"
+    )
+
+
+def _serve_files_as_download(tracks: list[Path], album_artist: str, album_title: str):
+    """Serve tagged MP3s: a single track as raw audio, several as a zip."""
+    if len(tracks) == 1:
+        return FileResponse(
+            path=tracks[0], filename=tracks[0].name, media_type="audio/mpeg"
+        )
+    zip_path = create_zip(album_artist, album_title, tracks)
+    download_name = (
+        f"{album_artist} - {album_title}.zip" if album_artist else f"{album_title}.zip"
+    )
+    return FileResponse(
+        path=zip_path, filename=download_name, media_type="application/zip"
+    )
+
+
+@app.get("/queue/jobs/{job_id}/download")
+def download_queue_files(job_id: str):
+    """Download a job's audio files while they are still on the server.
+
+    Completed jobs serve from the library; jobs awaiting review serve their
+    downloaded files. Single file returns raw MP3, several return a zip.
+    Returns 404 when the files are gone (e.g. job cleaned up).
+    """
+    job = queue_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    files: list[Path] = []
+    library_path = job.get("libraryPath")
+    if library_path:
+        library_dir = Path(library_path)
+        if library_dir.is_dir():
+            files = sorted(
+                p
+                for p in library_dir.iterdir()
+                if p.is_file() and p.suffix.lower() == ".mp3"
+            )
+
+    if not files and job["status"] == "readyForReview":
+        for track in (job.get("manifest") or {}).get("tracks") or []:
+            candidate = Path(track.get("path") or "")
+            if candidate.is_file():
+                files.append(candidate)
+
+    if not files:
+        raise HTTPException(
+            status_code=404, detail="Files are no longer on the server"
+        )
+
+    album = job.get("album") or {}
+    return _serve_files_as_download(
+        files,
+        sanitize(album.get("artist") or ""),
+        sanitize(album.get("title") or "album"),
     )
 
 

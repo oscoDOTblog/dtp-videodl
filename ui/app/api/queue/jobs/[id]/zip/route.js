@@ -17,13 +17,17 @@ export async function POST(request, { params }) {
       });
     }
     const buffer = await response.arrayBuffer();
+    const contentType =
+      response.headers.get("Content-Type") || "application/octet-stream";
     return new Response(buffer, {
       status: 200,
       headers: {
-        "Content-Type": "application/zip",
+        "Content-Type": contentType,
         "Content-Disposition":
           response.headers.get("Content-Disposition") ||
-          "attachment; filename=\"album.zip\"",
+          (contentType.includes("audio")
+            ? "attachment; filename=\"track.mp3\""
+            : "attachment; filename=\"album.zip\""),
       },
     });
   } catch (error) {

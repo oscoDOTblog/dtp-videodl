@@ -26,6 +26,40 @@ export default function QueuePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
+
+  const downloadJob = async (job) => {
+    setDownloadingId(job.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/queue/jobs/${job.id}/download`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "Download failed");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+      const fallbackName = `${job.album?.artist || "Unknown artist"} - ${
+        job.album?.title || "Untitled"
+      }`;
+      const filename = match
+        ? decodeURIComponent(match[1].replace(/^"|"$/g, ""))
+        : fallbackName;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (err) {
+      setError(err.message || "Failed to download files");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const load = async () => {
     try {
@@ -176,7 +210,7 @@ export default function QueuePage() {
                 )}
 
                 {job.error && <div className={styles.jobError}>{job.error}</div>}
-                {job.libraryPath && (
+                {job.hasLibraryPath && (
                   <div className={styles.meta}>Saved to library</div>
                 )}
 
@@ -185,6 +219,15 @@ export default function QueuePage() {
                     <Link href={`/order?jobId=${job.id}`} className={styles.primaryButton}>
                       Review & save
                     </Link>
+                  )}
+                  {(job.hasLibraryPath || job.status === "readyForReview") && (
+                    <button
+                      className={styles.secondaryButton}
+                      disabled={busy || downloadingId === job.id}
+                      onClick={() => downloadJob(job)}
+                    >
+                      {downloadingId === job.id ? "Preparing…" : "Download"}
+                    </button>
                   )}
                   {(job.status === "queued" ||
                     job.status === "downloading" ||
