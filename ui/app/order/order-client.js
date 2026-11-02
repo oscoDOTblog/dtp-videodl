@@ -13,7 +13,7 @@ export default function OrderPage() {
   const [job, setJob] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -51,9 +51,9 @@ export default function OrderPage() {
     };
   }, [jobId]);
 
-  const canSave = useMemo(
-    () => job?.status === "readyForReview" && tracks.length > 0 && !saving,
-    [job, tracks, saving]
+  const canDownload = useMemo(
+    () => job?.status === "readyForReview" && tracks.length > 0 && !downloading,
+    [job, tracks, downloading]
   );
 
   const move = (fromIndex, toIndex) => {
@@ -69,13 +69,13 @@ export default function OrderPage() {
     setTracks(next);
   };
 
-  const saveToTunes = async () => {
-    if (!jobId || !canSave) return;
-    setSaving(true);
+  const downloadAsMp3 = async () => {
+    if (!jobId || !canDownload) return;
+    setDownloading(true);
     setError("");
     setSuccessMessage("");
     try {
-      const response = await fetch(`/api/queue/jobs/${jobId}/save`, {
+      const response = await fetch(`/api/queue/jobs/${jobId}/zip`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -88,15 +88,30 @@ export default function OrderPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Save failed");
+        throw new Error(data.detail || "Download failed");
       }
-      const data = await response.json();
-      setJob(data.job);
-      setSuccessMessage(`Saved ${data.count || tracks.length} tracks to DTP Tunes`);
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+      const fallbackName = `${job.album?.artist || "Unknown artist"} - ${
+        job.album?.title || "Untitled"
+      }.zip`;
+      const filename = match
+        ? decodeURIComponent(match[1].replace(/^"|"$/g, ""))
+        : fallbackName;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setSuccessMessage(`Downloaded ${tracks.length} tracks as MP3`);
     } catch (err) {
-      setError(err.message || "Failed to save to DTP Tunes");
+      setError(err.message || "Failed to download MP3");
     } finally {
-      setSaving(false);
+      setDownloading(false);
     }
   };
 
@@ -150,12 +165,12 @@ export default function OrderPage() {
                 className={styles.trackInput}
                 value={track.title}
                 onChange={(e) => updateTrackTitle(index, e.target.value)}
-                disabled={saving || job.status !== "readyForReview"}
+                disabled={downloading || job.status !== "readyForReview"}
               />
               <div className={styles.controls}>
                 <button
                   className={styles.controlButton}
-                  disabled={index === 0 || saving || job.status !== "readyForReview"}
+                  disabled={index === 0 || downloading || job.status !== "readyForReview"}
                   onClick={() => move(index, index - 1)}
                   aria-label="Move up"
                 >
@@ -164,7 +179,7 @@ export default function OrderPage() {
                 <button
                   className={styles.controlButton}
                   disabled={
-                    index === tracks.length - 1 || saving || job.status !== "readyForReview"
+                    index === tracks.length - 1 || downloading || job.status !== "readyForReview"
                   }
                   onClick={() => move(index, index + 1)}
                   aria-label="Move down"
@@ -184,13 +199,13 @@ export default function OrderPage() {
 
         <div className={styles.finalizeSection}>
           {job.status === "readyForReview" ? (
-            <button onClick={saveToTunes} className={styles.finalizeButton} disabled={!canSave}>
-              {saving ? (
+            <button onClick={downloadAsMp3} className={styles.finalizeButton} disabled={!canDownload}>
+              {downloading ? (
                 <>
-                  <span className={styles.spinner} /> Saving…
+                  <span className={styles.spinner} /> Preparing…
                 </>
               ) : (
-                "Save to DTP Tunes"
+                "Download as MP3"
               )}
             </button>
           ) : (

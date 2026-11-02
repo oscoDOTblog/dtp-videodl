@@ -477,6 +477,63 @@ def save_queue_job(job_id: str, req: QueueSaveReq):
     }
 
 
+@app.post("/queue/jobs/{job_id}/zip")
+def zip_queue_job(job_id: str, req: QueueSaveReq):
+    """Tag + zip a readyForReview one-off job for browser download.
+
+    Leaves the job in readyForReview with an updated manifest so a later
+    save still resolves the renamed files. Does not touch the library.
+    """
+    job = queue_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "readyForReview":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not ready for review (status={job['status']})",
+        )
+    if job["mode"] != "oneOff":
+        raise HTTPException(
+            status_code=400, detail="Only one-off jobs can be downloaded from review"
+        )
+
+    manifest_tracks = (job.get("manifest") or {}).get("tracks") or []
+    by_id = {t["id"]: t for t in manifest_tracks}
+    resolved = []
+    for track in req.orderedTracks:
+        source = by_id.get(track.id)
+        if not source:
+            raise HTTPException(status_code=400, detail=f"Unknown track id: {track.id}")
+        resolved.append(
+            {
+                "id": source["id"],
+                "path": source["path"],
+                "title": track.title or source["title"],
+            }
+        )
+
+    try:
+        tracks = prepare_tracks(
+            job_id,
+            job["album"],
+            resolved,
+            cover_path=job.get("coverPath"),
+        )
+    except LibraryError as exc:
+        raise _library_http(exc) from exc
+    queue_store.update_job(job_id, manifest={"tracks": resolved})
+
+    album_title = sanitize((job["album"] or {}).get("title") or "album")
+    album_artist = sanitize((job["album"] or {}).get("artist") or "")
+    zip_path = create_zip(album_artist, album_title, tracks)
+    download_name = (
+        f"{album_artist} - {album_title}.zip" if album_artist else f"{album_title}.zip"
+    )
+    return FileResponse(
+        path=zip_path, filename=download_name, media_type="application/zip"
+    )
+
+
 @app.post("/queue/jobs/{job_id}/cancel")
 def cancel_queue_job(job_id: str):
     job = queue_store.get_job(job_id)
