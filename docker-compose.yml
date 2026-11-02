@@ -1,6 +1,6 @@
 services:
   gateway:
-    image: nginx:1.27-alpine
+    image: nginx:1.30-alpine
     container_name: p2a_gateway
     # Loopback-only diagnostic port — not reachable from LAN/WAN.
     # Public access in production goes through Runtipi Traefik (see docker-compose.runtipi.yml).

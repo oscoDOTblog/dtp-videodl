@@ -163,6 +163,7 @@ cd ../ui && npm ci && npm run lint && npm run build
 
 ## Notes
 
+- `api/requirements.txt` pins the `yt-dlp` version. When YouTube changes break metadata or downloads, bump that pin and rebuild: `docker compose build --no-cache api`.
 - All processing happens locally — no cloud uploads of your media
 - Ensure you have rights to download/convert the content
 - Site terms of service and copyright laws may prohibit downloading content

@@ -1,9 +1,11 @@
-fastapi==0.115.0
-uvicorn==0.30.6
-yt-dlp[default]>=2025.11.12
-mutagen==1.47.0
-pydantic==2.9.2
-python-multipart==0.0.9
-httpx==0.27.2
-pytest==8.3.4
+fastapi==0.162.0
+uvicorn==0.54.0
+# yt-dlp changes frequently to keep up with YouTube; bump deliberately when
+# metadata/downloads break, then rebuild the api image without cache.
+yt-dlp[default]==2026.10.26
+mutagen==1.48.1
+pydantic==2.14.2
+python-multipart==0.0.33
+httpx==0.28.1
+pytest==9.2.0
 

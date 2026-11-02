@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -56,7 +57,14 @@ logger = logging.getLogger("videodl.api")
 ensure_dirs()
 queue_store.init_db()
 
-app = FastAPI(title="VideoDL API")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    start_workers()
+    yield
+
+
+app = FastAPI(title="VideoDL API", lifespan=lifespan)
 
 cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:8546")
 cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
@@ -67,11 +75,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    start_workers()
 
 
 @app.get("/health")

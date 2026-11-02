@@ -204,6 +204,17 @@ export default function Home() {
     return response.json();
   };
 
+  // Show browser notification
+  const showNotification = (title, options = {}) => {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        icon: "/favicon.ico",
+        badge: "/favicon.ico",
+        ...options,
+      });
+    }
+  };
+
   const pollQueueJob = async (jobId) => {
     try {
       const response = await fetch(`/api/queue/jobs/${jobId}`);
@@ -362,17 +373,6 @@ export default function Home() {
     // render-local polling function changes would create duplicate intervals.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Show browser notification
-  const showNotification = (title, options = {}) => {
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, {
-        icon: "/favicon.ico",
-        badge: "/favicon.ico",
-        ...options,
-      });
-    }
-  };
 
   // Cleanup interval on unmount
   useEffect(() => {
