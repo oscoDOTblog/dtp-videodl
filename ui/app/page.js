@@ -9,6 +9,21 @@ const ACTIVE_ONE_OFF_JOB_KEY = "videodl-active-one-off-job";
 export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [useCookies, setUseCookies] = useState(false);
+  const [downloadEntirePlaylist, setDownloadEntirePlaylist] = useState(true);
+
+  const urlLooksLikePlaylist = (url) => /[?&]list=/.test(url || "");
+  const stripPlaylistParams = (url) => {
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.delete("list");
+      parsed.searchParams.delete("index");
+      return parsed.toString();
+    } catch {
+      return url;
+    }
+  };
+  const effectiveDownloadUrl = (url) =>
+    urlLooksLikePlaylist(url) && !downloadEntirePlaylist ? stripPlaylistParams(url) : url;
   const [albumTitle, setAlbumTitle] = useState("");
   const [albumArtist, setAlbumArtist] = useState("");
   const [year, setYear] = useState("");
@@ -162,6 +177,7 @@ export default function Home() {
 
   const startOver = () => {
     setPlaylistUrl("");
+    setDownloadEntirePlaylist(true);
     setAlbumTitle("");
     setAlbumArtist("");
     setYear("");
@@ -187,7 +203,7 @@ export default function Home() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         mode,
-        playlistUrl,
+        playlistUrl: effectiveDownloadUrl(playlistUrl),
         useCookies,
         album: {
           title: albumTitle,
@@ -504,6 +520,7 @@ export default function Home() {
                   onChange={(e) => {
                     setPlaylistUrl(e.target.value);
                     setDetailsVisible(false);
+                    setDownloadEntirePlaylist(urlLooksLikePlaylist(e.target.value));
                   }}
                   required
                   disabled={loading || metadataLoading}
@@ -675,6 +692,23 @@ export default function Home() {
 
           {error && <div className={styles.error}>{error}</div>}
           {queueMessage && <div className={styles.loading}>{queueMessage}</div>}
+
+          {detailsVisible && urlLooksLikePlaylist(playlistUrl) && (
+            <div className={styles.formGroup}>
+              <label className={styles.toggleRow} htmlFor="downloadPlaylistToggle">
+                <input
+                  id="downloadPlaylistToggle"
+                  type="checkbox"
+                  className={styles.toggleInput}
+                  checked={downloadEntirePlaylist}
+                  onChange={(e) => setDownloadEntirePlaylist(e.target.checked)}
+                  disabled={loading || enqueueing || metadataLoading}
+                />
+                <span className={styles.toggleSlider} aria-hidden="true" />
+                <span>Download entire playlist (off = just this video)</span>
+              </label>
+            </div>
+          )}
 
           {detailsVisible && (
             <div className={styles.actionRow}>

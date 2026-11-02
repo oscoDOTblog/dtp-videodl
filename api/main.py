@@ -359,18 +359,27 @@ async def library_upload(
 
 @app.post("/metadata", response_model=MetadataResp)
 def metadata(req: MetadataReq):
+    # --no-playlist keeps pasted playlist URLs fast: prefill uses the single
+    # video instead of extracting the whole playlist (which timed out).
     cmd = build_yt_dlp_cmd(
         [
             "yt-dlp",
             "--dump-single-json",
             "--skip-download",
+            "--no-playlist",
             "--no-warnings",
             req.playlist_url,
         ],
         use_cookies=req.useCookies,
     )
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        logger.warning("Metadata lookup timed out for %s", req.playlist_url)
+        raise HTTPException(
+            status_code=504,
+            detail="Metadata lookup timed out. Try again, or paste a single-video URL.",
+        )
     except subprocess.CalledProcessError as e:
         detail = (e.stderr or e.stdout or "Failed to fetch metadata").strip()
         raise HTTPException(status_code=400, detail=detail)
